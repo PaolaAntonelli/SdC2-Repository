@@ -5,6 +5,9 @@ TagManager:
   serializedVersion: 3
   tags:
   - SceneCanvas
+  - Load
+  - Support
+  - currentStructure
   layers:
   - Default
   - TransparentFX

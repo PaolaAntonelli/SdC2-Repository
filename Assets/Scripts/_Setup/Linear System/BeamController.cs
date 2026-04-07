@@ -7,6 +7,10 @@ public class BeamController : MonoBehaviour
     [Header("Impostazioni Solutore")]
     public SolverType currentSolver = SolverType.Analytic;
 
+    [Header("Structure Type")]
+    public StructureType currentStructure = StructureType.Beam;
+    public float archHeight = 2f;
+
     public GameObject beamObject;
     public GameObject supportPrefab;
     public GameObject loadPrefab;
@@ -16,7 +20,6 @@ public class BeamController : MonoBehaviour
     [Header("Parametri Grafici")]
     public float forceMagnitude = 15f;
     public float currentDiagramScale = 0.05f;
-    // Se la deformazione va verso l'alto, cambia questo valore in negativo (es. -100)
     public float deflectionVisualScale = 100f;
     public Vector3 diagramOffset = new Vector3(0, -2f, 0);
     public float minDistanceBetweenObjects = 0.5f;
@@ -32,11 +35,15 @@ public class BeamController : MonoBehaviour
     public float BeamStartX { get; private set; }
     public float BeamLength { get; private set; }
 
-    // Questa funzione può essere collegata a un UI Toggle o Button
+    // Store results for stress visualization
+    public BeamData Results { get; private set; }
+    public bool HasResults { get; private set; }   // <-- ADDED
+
     public void SetSolverType(bool isAnalytic)
     {
         currentSolver = isAnalytic ? SolverType.Analytic : SolverType.FEM;
     }
+
     void Start()
     {
         if (beamObject != null)
@@ -59,6 +66,8 @@ public class BeamController : MonoBehaviour
             UpdateBeamDimensions();
             SetupInitialScenario();
         }
+
+        HasResults = false; // <-- ADDED
     }
 
     void DetectMeshAxes(Mesh m)
@@ -88,7 +97,6 @@ public class BeamController : MonoBehaviour
         {
             BeamData results;
 
-            // SWITCH TRA I DUE METODI
             if (currentSolver == SolverType.Analytic)
             {
                 results = BeamMath.CalculateAnalytic(BeamLength, lPos, lMag, sPos, 100);
@@ -98,19 +106,53 @@ public class BeamController : MonoBehaviour
                 results = BeamMath.CalculateFEM(BeamLength, lPos, lMag, sPos, 100);
             }
 
-            RenderDiagram(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
-            RenderDiagram(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
+            // Store results for stress visualization
+            Results = results;
+            HasResults = true;   // <-- ADDED
+
+            // Render diagrams according to structure type
+            if (currentStructure == StructureType.Arch)
+            {
+                RenderDiagramForArch(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
+                RenderDiagramForArch(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
+            }
+            else
+            {
+                RenderDiagram(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
+                RenderDiagram(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
+            }
 
             if (showDeflection) ApplyDeflectionToMesh(results.deflectionPoints);
             else ResetMesh();
         }
+        else
+        {
+            HasResults = false;   // <-- ADDED (no supports)
+        }
+    }
+
+    // New method for arch diagram rendering
+    void RenderDiagramForArch(LineRenderer line, float[] values, float scale, Color color)
+    {
+        if (line == null) return;
+        line.positionCount = values.Length;
+        for (int i = 0; i < values.Length; i++)
+        {
+            float x = BeamStartX + (i * (BeamLength / (values.Length - 1)));
+            float y = GetArchY(x);
+            line.SetPosition(i, new Vector3(x, y + values[i] * scale, beamObject.transform.position.z));
+        }
+    }
+
+    float GetArchY(float x)
+    {
+        float t = (x - BeamStartX) / BeamLength;
+        return beamObject.transform.position.y + archHeight * 4 * t * (1 - t);
     }
 
     void ApplyDeflectionToMesh(float[] deflections)
     {
         Vector3[] displacedVertices = new Vector3[originalVertices.Length];
-
-        // localDown identifica la direzione "gių" nel sistema di coordinate della mesh
         Vector3 localDown = beamObject.transform.InverseTransformDirection(Vector3.down);
 
         for (int i = 0; i < originalVertices.Length; i++)
@@ -118,12 +160,7 @@ public class BeamController : MonoBehaviour
             Vector3 v = originalVertices[i];
             float relL = (v[lengthAxis] - meshMinL) / meshSizeL;
             int idx = Mathf.Clamp(Mathf.RoundToInt(relL * (deflections.Length - 1)), 0, deflections.Length - 1);
-
-            // CORREZIONE VERSO: Moltiplichiamo per deflectionVisualScale. 
-            // Se deflections[idx] č negativo (abbassamento), dAmount deve spingere verso localDown.
             float dAmount = deflections[idx] * deflectionVisualScale;
-
-            // Sommiamo lo spostamento alla posizione originale del vertice
             displacedVertices[i] = v + (localDown * dAmount);
         }
 
@@ -141,8 +178,6 @@ public class BeamController : MonoBehaviour
             deformingMesh.RecalculateBounds();
         }
     }
-
-    // --- LOGICA SPAWN E UI ---
 
     public void ToggleDeflection() => showDeflection = !showDeflection;
     public void SetDiagramScale(float s) => currentDiagramScale = s;

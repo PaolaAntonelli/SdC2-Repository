@@ -9,13 +9,14 @@ public struct BeamData
     public float[] momentPoints;
     public float[] shearPoints;
     public float[] deflectionPoints;
+    public float[] stressPoints;   // <-- ADDED for stress visualization
 }
 
 public static class BeamMath
 {
     private const float EI = 1000f;
 
-    // --- METODO 1: ANALITICO (LINEE DI INFLUENZA / INTEGRAZIONE IV GRADO) ---
+    // --- METODO 1: ANALITICO ---
     public static BeamData CalculateAnalytic(float L, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
     {
         List<float> nodes = new List<float> { 0, L };
@@ -73,7 +74,7 @@ public static class BeamMath
         }
 
         double[] coeffs = Solve(A, B);
-        BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution] };
+        BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution], stressPoints = new float[resolution] };
 
         for (int j = 0; j < resolution; j++)
         {
@@ -85,11 +86,14 @@ public static class BeamMath
             data.deflectionPoints[j] = (float)((1.0 / EI) * (coeffs[c + 0] * z * z * z / 6.0 + coeffs[c + 1] * z * z / 2.0 + coeffs[c + 2] * z + coeffs[c + 3]));
             data.momentPoints[j] = -(float)(coeffs[c + 0] * z + coeffs[c + 1]);
             data.shearPoints[j] = -(float)(coeffs[c + 0]);
+
+            // --- ADDED: simple stress from moment (σ = M * y / I) with arbitrary factor 0.1
+            data.stressPoints[j] = Mathf.Abs(data.momentPoints[j]) * 0.1f;
         }
         return data;
     }
 
-    // --- METODO 2: FEM (FINITE ELEMENT METHOD) ---
+    // --- METODO 2: FEM ---
     public static BeamData CalculateFEM(float L, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
     {
         int nNodes = resolution;
@@ -102,7 +106,6 @@ public static class BeamMath
         double[,] K = new double[ndof, ndof];
         double[] F = new double[ndof];
 
-        // Assemblaggio matrice globale
         for (int e = 0; e < nElems; e++)
         {
             double[,] ke = GetLocalFEMStiffness(Le, EI);
@@ -111,14 +114,12 @@ public static class BeamMath
                 for (int j = 0; j < 4; j++) K[idx[i], idx[j]] += ke[i, j];
         }
 
-        // Carichi
         for (int i = 0; i < loadX.Count; i++)
         {
             int nodeIdx = Mathf.Clamp(Mathf.RoundToInt((loadX[i] / L) * nElems), 0, nNodes - 1);
             F[nodeIdx * 2] -= loadP[i];
         }
 
-        // Vincoli (Penalizzazione)
         foreach (float sx in suppX)
         {
             int nodeIdx = Mathf.Clamp(Mathf.RoundToInt((sx / L) * nElems), 0, nNodes - 1);
@@ -127,27 +128,29 @@ public static class BeamMath
 
         double[] u = Solve(K, F);
 
-        BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution] };
+        BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution], stressPoints = new float[resolution] };
         for (int i = 0; i < nNodes; i++)
         {
             data.deflectionPoints[i] = -(float)u[i * 2];
             if (i < nNodes - 1)
             {
-                // Calcolo Taglio e Momento dagli spostamenti dell'elemento
-                float z = 0; // Inizio elemento
+                float z = 0;
                 double[] ue = { u[i * 2], u[i * 2 + 1], u[(i + 1) * 2], u[(i + 1) * 2 + 1] };
                 data.momentPoints[i] = (float)(EI * (ue[0] * (-6 / Le / Le + 12 * z / Le / Le / Le) + ue[1] * (-4 / Le + 6 * z / Le / Le) + ue[2] * (6 / Le / Le - 12 * z / Le / Le / Le) + ue[3] * (-2 / Le + 6 * z / Le / Le)));
                 data.shearPoints[i] = (float)(EI * (ue[0] * (12 / Le / Le / Le) + ue[1] * (6 / Le / Le) + ue[2] * (-12 / Le / Le / Le) + ue[3] * (6 / Le / Le)));
+
+                // --- ADDED: stress from moment
+                data.stressPoints[i] = Mathf.Abs(data.momentPoints[i]) * 0.1f;
             }
         }
-        // Chiudiamo l'ultimo punto del diagramma
         data.momentPoints[nNodes - 1] = data.momentPoints[nNodes - 2];
         data.shearPoints[nNodes - 1] = data.shearPoints[nNodes - 2];
+        data.stressPoints[nNodes - 1] = data.stressPoints[nNodes - 2];
 
         return data;
     }
 
-    // --- HELPERS COMUNI ---
+    // --- HELPERS (unchanged) ---
     static void Add_V(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z * z * z / 6.0; A[r, s * 4 + 1] = z * z / 2.0; A[r, s * 4 + 2] = z; A[r, s * 4 + 3] = 1; B[r] = val; r++; }
     static void Add_M(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z; A[r, s * 4 + 1] = 1; B[r] = val; r++; }
     static void Add_T(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = 1; B[r] = val; r++; }
