@@ -2,14 +2,16 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 
+// ENUM DEFINITI SOLO QUI - RIMOSSI DA BEAMCONTROLLER
 public enum SolverType { Analytic, FEM }
+public enum BeamStructureType { Beam, Arch }
 
 public struct BeamData
 {
     public float[] momentPoints;
     public float[] shearPoints;
     public float[] deflectionPoints;
-    public float[] stressPoints;   // <-- ADDED for stress visualization
+    public float[] stressPoints;
 }
 
 public static class BeamMath
@@ -86,8 +88,6 @@ public static class BeamMath
             data.deflectionPoints[j] = (float)((1.0 / EI) * (coeffs[c + 0] * z * z * z / 6.0 + coeffs[c + 1] * z * z / 2.0 + coeffs[c + 2] * z + coeffs[c + 3]));
             data.momentPoints[j] = -(float)(coeffs[c + 0] * z + coeffs[c + 1]);
             data.shearPoints[j] = -(float)(coeffs[c + 0]);
-
-            // --- ADDED: simple stress from moment (σ = M * y / I) with arbitrary factor 0.1
             data.stressPoints[j] = Mathf.Abs(data.momentPoints[j]) * 0.1f;
         }
         return data;
@@ -138,8 +138,6 @@ public static class BeamMath
                 double[] ue = { u[i * 2], u[i * 2 + 1], u[(i + 1) * 2], u[(i + 1) * 2 + 1] };
                 data.momentPoints[i] = (float)(EI * (ue[0] * (-6 / Le / Le + 12 * z / Le / Le / Le) + ue[1] * (-4 / Le + 6 * z / Le / Le) + ue[2] * (6 / Le / Le - 12 * z / Le / Le / Le) + ue[3] * (-2 / Le + 6 * z / Le / Le)));
                 data.shearPoints[i] = (float)(EI * (ue[0] * (12 / Le / Le / Le) + ue[1] * (6 / Le / Le) + ue[2] * (-12 / Le / Le / Le) + ue[3] * (6 / Le / Le)));
-
-                // --- ADDED: stress from moment
                 data.stressPoints[i] = Mathf.Abs(data.momentPoints[i]) * 0.1f;
             }
         }
@@ -150,7 +148,7 @@ public static class BeamMath
         return data;
     }
 
-    // --- HELPERS (unchanged) ---
+    // --- HELPERS ---
     static void Add_V(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z * z * z / 6.0; A[r, s * 4 + 1] = z * z / 2.0; A[r, s * 4 + 2] = z; A[r, s * 4 + 3] = 1; B[r] = val; r++; }
     static void Add_M(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z; A[r, s * 4 + 1] = 1; B[r] = val; r++; }
     static void Add_T(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = 1; B[r] = val; r++; }

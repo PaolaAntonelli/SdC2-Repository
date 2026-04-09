@@ -31,7 +31,7 @@ public class StressColor : MonoBehaviour
     void Update()
     {
         // Use HasResults flag instead of comparing struct to null
-        if (beam == null || beam.currentStructure != StructureType.Arch) return;
+        if (beam == null || beam.currentStructure != BeamStructureType.Arch) return;
         if (!beam.HasResults) return;  // <-- FIX: use the flag
         
         float maxStress = 0;
