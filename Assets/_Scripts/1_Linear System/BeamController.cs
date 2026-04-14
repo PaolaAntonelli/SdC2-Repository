@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.UI;
+using System.Linq;
 
 public class BeamController : MonoBehaviour
 {
@@ -19,10 +20,20 @@ public class BeamController : MonoBehaviour
 
     [Header("Parametri Grafici")]
     public float forceMagnitude = 15f;
-    public float currentDiagramScale = 0.05f;
+    
+    [Header("Diagram Scales")]
+    public float shearDiagramScale = 0.05f;
+    public float momentDiagramScale = 0.01f;
+    public bool autoScaleDiagrams = false;
+    public float maxDiagramHeight = 2f;
+    
     public float deflectionVisualScale = 100f;
     public Vector3 diagramOffset = new Vector3(0, -2f, 0);
     public float minDistanceBetweenObjects = 0.5f;
+
+    // Riferimenti UI opzionali per mostrare le scale
+    public Text shearScaleText;
+    public Text momentScaleText;
 
     private bool showDeflection = false;
     private Vector3[] originalVertices;
@@ -35,11 +46,12 @@ public class BeamController : MonoBehaviour
     public float BeamStartX { get; private set; }
     public float BeamLength { get; private set; }
 
-    // Store results for stress visualization
+    private float currentStructureLength;
+    private float currentStructureStartX;
+
     public BeamData Results { get; private set; }
     public bool HasResults { get; private set; }
 
-    // Riferimenti ai componenti aggiuntivi
     private ArchController archController;
     private StressVisualizer stressVisualizer;
 
@@ -50,7 +62,6 @@ public class BeamController : MonoBehaviour
 
     void Start()
     {
-        // Ottieni riferimenti ai componenti aggiuntivi
         archController = GetComponent<ArchController>();
         stressVisualizer = GetComponent<StressVisualizer>();
 
@@ -96,6 +107,18 @@ public class BeamController : MonoBehaviour
         if (beamObject == null) return;
         UpdateBeamDimensions();
 
+        // Determina le dimensioni attuali della struttura (trave o arco)
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            currentStructureLength = archController.ArchLength;
+            currentStructureStartX = archController.ArchStartX;
+        }
+        else
+        {
+            currentStructureLength = BeamLength;
+            currentStructureStartX = BeamStartX;
+        }
+
         List<float> sPos = GetRelativePositions("Support");
         List<float> lPos = GetRelativePositions("Load");
         List<float> lMag = new List<float>();
@@ -107,30 +130,41 @@ public class BeamController : MonoBehaviour
 
             if (currentSolver == SolverType.Analytic)
             {
-                results = BeamMath.CalculateAnalytic(BeamLength, lPos, lMag, sPos, 100);
+                results = BeamMath.CalculateAnalytic(currentStructureLength, lPos, lMag, sPos, 100);
             }
             else
             {
-                results = BeamMath.CalculateFEM(BeamLength, lPos, lMag, sPos, 100);
+                results = BeamMath.CalculateFEM(currentStructureLength, lPos, lMag, sPos, 100);
             }
 
-            // Store results for stress visualization
             Results = results;
             HasResults = true;
 
-            // Render diagrams according to structure type
+            // Auto-scaling se attivo (non modifica i valori fisici, solo la visualizzazione)
+            if (autoScaleDiagrams)
+            {
+                float maxShear = results.shearPoints.Max(Mathf.Abs);
+                float maxMoment = results.momentPoints.Max(Mathf.Abs);
+                
+                shearDiagramScale = maxShear > 0.001f ? maxDiagramHeight / maxShear : 0.05f;
+                momentDiagramScale = maxMoment > 0.001f ? maxDiagramHeight / maxMoment : 0.01f;
+            }
+
+            // Aggiorna UI scale se presente
+            UpdateScaleUI();
+
+            // Render diagrammi con scale appropriate
             if (currentStructure == BeamStructureType.Arch)
             {
-                RenderDiagramForArch(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
-                RenderDiagramForArch(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
+                RenderDiagramForArch(shearLine, results.shearPoints, shearDiagramScale, Color.cyan);
+                RenderDiagramForArch(momentLine, results.momentPoints, momentDiagramScale, Color.magenta);
             }
             else
             {
-                RenderDiagram(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
-                RenderDiagram(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
+                RenderDiagram(shearLine, results.shearPoints, shearDiagramScale, Color.cyan);
+                RenderDiagram(momentLine, results.momentPoints, momentDiagramScale, Color.magenta);
             }
 
-            // Aggiorna la visualizzazione per l'arco se attivo
             UpdateArchVisualization();
 
             if (showDeflection)
@@ -162,9 +196,14 @@ public class BeamController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Aggiorna la visualizzazione specifica per l'arco
-    /// </summary>
+    void UpdateScaleUI()
+    {
+        if (shearScaleText != null)
+            shearScaleText.text = $"Scala Taglio: 1 unità = {1f/shearDiagramScale:F2} kN";
+        if (momentScaleText != null)
+            momentScaleText.text = $"Scala Momento: 1 unità = {1f/momentDiagramScale:F2} kNm";
+    }
+
     public void UpdateArchVisualization()
     {
         if (currentStructure != BeamStructureType.Arch) return;
@@ -172,33 +211,46 @@ public class BeamController : MonoBehaviour
         if (!archController.IsActive) return;
         if (!HasResults) return;
 
-        // Se lo stress visualizer è presente, forzalo ad aggiornarsi
         if (stressVisualizer != null)
         {
             stressVisualizer.enabled = true;
         }
     }
 
-    // New method for arch diagram rendering
     void RenderDiagramForArch(LineRenderer line, float[] values, float scale, Color color)
     {
         if (line == null) return;
         line.positionCount = values.Length;
         line.startColor = color;
         line.endColor = color;
-        
+
         for (int i = 0; i < values.Length; i++)
         {
-            float x = BeamStartX + (i * (BeamLength / (values.Length - 1)));
-            float y = GetArchY(x);
-            line.SetPosition(i, new Vector3(x, y + values[i] * scale, beamObject.transform.position.z));
+            float t = (float)i / (values.Length - 1);
+            float x = Mathf.Lerp(currentStructureStartX, currentStructureStartX + currentStructureLength, t);
+            float y = GetArchYAtX(x);
+            // Applica offset diverso per momento se desiderato
+            float yOffset = (line == momentLine) ? diagramOffset.y : 0f;
+            line.SetPosition(i, new Vector3(x, y + values[i] * scale + yOffset, beamObject.transform.position.z));
         }
     }
 
-    float GetArchY(float x)
+    float GetArchYAtX(float worldX)
     {
-        float t = (x - BeamStartX) / BeamLength;
-        return beamObject.transform.position.y + archHeight * 4 * t * (1 - t);
+        if (archController != null && archController.IsActive)
+        {
+            return archController.GetArchHeightAtX(worldX);
+        }
+        else
+        {
+            float t = (worldX - BeamStartX) / BeamLength;
+            return beamObject.transform.position.y + archHeight * 4 * t * (1 - t);
+        }
+    }
+
+    float GetArchY(float x) // mantenuto per retrocompatibilità
+    {
+        return GetArchYAtX(x);
     }
 
     void ApplyDeflectionToMesh(float[] deflections)
@@ -230,38 +282,41 @@ public class BeamController : MonoBehaviour
         }
     }
 
-    public void ToggleDeflection() 
-    { 
+    public void ToggleDeflection()
+    {
         showDeflection = !showDeflection;
-        
-        // Se disattiviamo la deflessione, resettiamo anche la mesh dell'arco
+
         if (!showDeflection && currentStructure == BeamStructureType.Arch && archController != null)
         {
             archController.ResetMesh();
         }
     }
-    
-    public void SetDiagramScale(float s) 
-    { 
-        currentDiagramScale = s;
+
+    public void SetDiagramScale(float s)
+    {
+        // Metodo legacy per UI singolo slider (retrocompatibile)
+        shearDiagramScale = s;
+        momentDiagramScale = s * 0.1f;
         
-        // Propaga la scala anche allo stress visualizer
         if (stressVisualizer != null)
         {
             stressVisualizer.SetDiagramScale(s);
         }
     }
 
+    public void SetShearScale(float s) => shearDiagramScale = s;
+    public void SetMomentScale(float s) => momentDiagramScale = s;
+    public void SetAutoScale(bool auto) => autoScaleDiagrams = auto;
+
     public void ResetStructure()
     {
         foreach (GameObject obj in GetAllElements()) Destroy(obj);
-        
-        // Reset della mesh dell'arco se attivo
+
         if (currentStructure == BeamStructureType.Arch && archController != null)
         {
             archController.ResetMesh();
         }
-        
+
         Invoke("SetupInitialScenario", 0.05f);
     }
 
@@ -278,12 +333,12 @@ public class BeamController : MonoBehaviour
 
     float GetValidSpawnX()
     {
-        float center = BeamStartX + (BeamLength / 2f);
+        float center = currentStructureStartX + (currentStructureLength / 2f);
         for (int i = 0; i < 20; i++)
         {
             float offset = (i / 2 + 1) * minDistanceBetweenObjects * (i % 2 == 0 ? 1 : -1);
             float testX = (i == 0) ? center : center + offset;
-            testX = Mathf.Clamp(testX, BeamStartX, BeamStartX + BeamLength);
+            testX = Mathf.Clamp(testX, currentStructureStartX, currentStructureStartX + currentStructureLength);
             bool occupied = false;
             foreach (var obj in GetAllElements())
                 if (obj != null && Mathf.Abs(obj.transform.position.x - testX) < minDistanceBetweenObjects * 0.8f) occupied = true;
@@ -318,8 +373,10 @@ public class BeamController : MonoBehaviour
     List<float> GetRelativePositions(string tag)
     {
         var p = new List<float>();
+        float startX = currentStructureStartX;
+        float length = currentStructureLength;
         foreach (var o in GameObject.FindGameObjectsWithTag(tag))
-            p.Add(Mathf.Clamp(o.transform.position.x - BeamStartX, 0, BeamLength));
+            p.Add(Mathf.Clamp(o.transform.position.x - startX, 0, length));
         return p;
     }
 
@@ -329,24 +386,26 @@ public class BeamController : MonoBehaviour
         line.positionCount = values.Length;
         line.startColor = color;
         line.endColor = color;
-        
+
         for (int i = 0; i < values.Length; i++)
         {
-            float x = BeamStartX + (i * (BeamLength / (values.Length - 1)));
-            line.SetPosition(i, new Vector3(x, beamObject.transform.position.y, beamObject.transform.position.z) + diagramOffset + new Vector3(0, values[i] * scale, 0));
+            float x = currentStructureStartX + (i * (currentStructureLength / (values.Length - 1)));
+            Vector3 pos = new Vector3(x, beamObject.transform.position.y, beamObject.transform.position.z) 
+                         + diagramOffset + new Vector3(0, values[i] * scale, 0);
+            line.SetPosition(i, pos);
         }
     }
 
     public bool IsShowingDeflection() => showDeflection;
-    
+
     public void SetStructureType(int type)
     {
         BeamStructureType newType = (BeamStructureType)type;
-        
+
         if (newType == currentStructure) return;
-        
+
         currentStructure = newType;
-        
+
         if (currentStructure == BeamStructureType.Arch && archController != null)
         {
             archController.ActivateArchMode();
@@ -355,7 +414,7 @@ public class BeamController : MonoBehaviour
         {
             archController.DeactivateArchMode();
         }
-        
+
         HasResults = false;
     }
 }
