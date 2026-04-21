@@ -15,19 +15,19 @@ public class ShearMomentScaleUI : MonoBehaviour
         if (beamController == null)
             beamController = FindFirstObjectByType<BeamController>();
 
-        // Inizializza slider con valori correnti
+        // Inizializza slider con valori correnti e range ampliati
         if (shearScaleSlider != null)
         {
-            shearScaleSlider.minValue = 0.001f;
-            shearScaleSlider.maxValue = 0.5f;
+            shearScaleSlider.minValue = 0.01f;   // Era 0.001f
+            shearScaleSlider.maxValue = 1.0f;    // Era 0.5f
             shearScaleSlider.value = beamController.shearDiagramScale;
             shearScaleSlider.onValueChanged.AddListener(OnShearScaleChanged);
         }
 
         if (momentScaleSlider != null)
         {
-            momentScaleSlider.minValue = 0.0001f;
-            momentScaleSlider.maxValue = 0.1f;
+            momentScaleSlider.minValue = 0.001f;  // Era 0.0001f
+            momentScaleSlider.maxValue = 0.2f;    // Era 0.1f
             momentScaleSlider.value = beamController.momentDiagramScale;
             momentScaleSlider.onValueChanged.AddListener(OnMomentScaleChanged);
         }
@@ -55,7 +55,7 @@ public class ShearMomentScaleUI : MonoBehaviour
 
     void OnAutoScaleToggled(bool isOn)
     {
-        beamController.autoScaleDiagrams = isOn;
+        beamController.SetAutoScale(isOn);
         // Disabilita slider se auto-scale è attivo
         if (shearScaleSlider != null) shearScaleSlider.interactable = !isOn;
         if (momentScaleSlider != null) momentScaleSlider.interactable = !isOn;

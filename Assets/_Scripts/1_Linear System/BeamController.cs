@@ -22,10 +22,10 @@ public class BeamController : MonoBehaviour
     public float forceMagnitude = 15f;
     
     [Header("Diagram Scales")]
-    public float shearDiagramScale = 0.05f;
-    public float momentDiagramScale = 0.01f;
-    public bool autoScaleDiagrams = false;
-    public float maxDiagramHeight = 2f;
+    public float shearDiagramScale = 0.2f;      // AUMENTATO da 0.05f
+    public float momentDiagramScale = 0.05f;    // AUMENTATO da 0.01f
+    public bool autoScaleDiagrams = true;        // ATTIVATO di default
+    public float maxDiagramHeight = 3f;          // AUMENTATO da 2f
     
     public float deflectionVisualScale = 100f;
     public Vector3 diagramOffset = new Vector3(0, -2f, 0);
@@ -64,6 +64,12 @@ public class BeamController : MonoBehaviour
     {
         archController = GetComponent<ArchController>();
         stressVisualizer = GetComponent<StressVisualizer>();
+
+        // Inizializza scale aumentate
+        shearDiagramScale = 0.2f;
+        momentDiagramScale = 0.05f;
+        maxDiagramHeight = 3f;
+        autoScaleDiagrams = true;
 
         if (beamObject != null)
         {
@@ -128,7 +134,15 @@ public class BeamController : MonoBehaviour
         {
             BeamData results;
 
-            if (currentSolver == SolverType.Analytic)
+            // NUOVA LOGICA: Usa il solutore appropriato per archi
+            if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+            {
+                results = BeamMath.CalculateArchAnalytic(
+                    currentStructureLength,
+                    archController.archHeight,
+                    lPos, lMag, sPos, 100);
+            }
+            else if (currentSolver == SolverType.Analytic)
             {
                 results = BeamMath.CalculateAnalytic(currentStructureLength, lPos, lMag, sPos, 100);
             }
@@ -140,14 +154,23 @@ public class BeamController : MonoBehaviour
             Results = results;
             HasResults = true;
 
-            // Auto-scaling se attivo (non modifica i valori fisici, solo la visualizzazione)
+            // Auto-scaling migliorato
             if (autoScaleDiagrams)
             {
                 float maxShear = results.shearPoints.Max(Mathf.Abs);
                 float maxMoment = results.momentPoints.Max(Mathf.Abs);
                 
-                shearDiagramScale = maxShear > 0.001f ? maxDiagramHeight / maxShear : 0.05f;
-                momentDiagramScale = maxMoment > 0.001f ? maxDiagramHeight / maxMoment : 0.01f;
+                // Usa scale più aggressive per strutture ad arco
+                float multiplier = (currentStructure == BeamStructureType.Arch) ? 2.5f : 1.5f;
+                
+                shearDiagramScale = maxShear > 0.001f ? 
+                    (maxDiagramHeight / maxShear) * multiplier : 0.2f;
+                momentDiagramScale = maxMoment > 0.001f ? 
+                    (maxDiagramHeight / maxMoment) * multiplier : 0.05f;
+                    
+                // Limiti di sicurezza
+                shearDiagramScale = Mathf.Clamp(shearDiagramScale, 0.01f, 1.0f);
+                momentDiagramScale = Mathf.Clamp(momentDiagramScale, 0.001f, 0.2f);
             }
 
             // Aggiorna UI scale se presente
@@ -229,7 +252,6 @@ public class BeamController : MonoBehaviour
             float t = (float)i / (values.Length - 1);
             float x = Mathf.Lerp(currentStructureStartX, currentStructureStartX + currentStructureLength, t);
             float y = GetArchYAtX(x);
-            // Applica offset diverso per momento se desiderato
             float yOffset = (line == momentLine) ? diagramOffset.y : 0f;
             line.SetPosition(i, new Vector3(x, y + values[i] * scale + yOffset, beamObject.transform.position.z));
         }
@@ -294,7 +316,6 @@ public class BeamController : MonoBehaviour
 
     public void SetDiagramScale(float s)
     {
-        // Metodo legacy per UI singolo slider (retrocompatibile)
         shearDiagramScale = s;
         momentDiagramScale = s * 0.1f;
         
@@ -349,7 +370,22 @@ public class BeamController : MonoBehaviour
 
     private GameObject SpawnAtPosition(GameObject prefab, float worldX, float yOff)
     {
-        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y + yOff, beamObject.transform.position.z);
+        float yPosition = beamObject.transform.position.y + yOff;
+        
+        // MODIFICA: Posiziona il carico SOPRA l'arco
+        if (currentStructure == BeamStructureType.Arch)
+        {
+            float archY = GetArchYAtX(worldX);
+            yPosition = archY + Mathf.Abs(yOff); // Forza yOff positivo per carichi sopra l'arco
+            
+            // Per i supporti, mantieni sotto l'arco
+            if (prefab.CompareTag("Support"))
+            {
+                yPosition = archY + yOff; // yOff negativo per supporti
+            }
+        }
+        
+        Vector3 pos = new Vector3(worldX, yPosition, beamObject.transform.position.z);
         GameObject inst = Instantiate(prefab, pos, Quaternion.identity);
         if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
         return inst;

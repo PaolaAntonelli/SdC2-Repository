@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Linq; // AGGIUNTO per supportare Max() sugli array
 
 public class StressVisualizer : MonoBehaviour
 {
@@ -93,14 +94,24 @@ public class StressVisualizer : MonoBehaviour
         if (archController != null && isArch)
         {
             float[] combinedStress = new float[results.stressPoints.Length];
-            float[] axialForces = CalculateAxialForces(results, true);
-
+            
             for (int i = 0; i < combinedStress.Length; i++)
             {
-                combinedStress[i] = Mathf.Abs(axialForces[i]) * 0.05f + results.stressPoints[i];
+                float t = (float)i / (combinedStress.Length - 1);
+                float worldX = Mathf.Lerp(archController.ArchStartX, archController.ArchEndX, t);
+                
+                // Considera sia momento che sforzo normale
+                float M = results.momentPoints[i];
+                float N = CalculateAxialForceAtX(results, worldX, isArch);
+                
+                // Formula di Navier semplificata
+                combinedStress[i] = Mathf.Abs(N) * 0.05f + Mathf.Abs(M) * 0.15f;
             }
-
-            archController.VisualizeStress(combinedStress, maxExpectedStress);
+            
+            float maxStress = combinedStress.Max();
+            if (maxStress < 0.1f) maxStress = 1f;
+            
+            archController.VisualizeStress(combinedStress, maxStress);
         }
         else
         {
@@ -129,20 +140,40 @@ public class StressVisualizer : MonoBehaviour
             return axialForces;
         }
 
-        float H = 10f;
-
         for (int i = 0; i < n; i++)
         {
             float t = (float)i / (n - 1);
             float worldX = Mathf.Lerp(archController.ArchStartX, archController.ArchEndX, t);
-            Vector3 tangent = archController.GetArchTangentAtX(worldX);
-            float cosTheta = tangent.x;
-            float sinTheta = tangent.y;
-
-            axialForces[i] = -H * cosTheta - results.shearPoints[i] * sinTheta;
+            axialForces[i] = CalculateAxialForceAtX(results, worldX, isArch);
         }
 
         return axialForces;
+    }
+
+    private float CalculateAxialForceAtX(BeamData results, float worldX, bool isArch)
+    {
+        if (!isArch || archController == null) return 0;
+        
+        Vector3 tangent = archController.GetArchTangentAtX(worldX);
+        float cosTheta = tangent.x;
+        float sinTheta = tangent.y;
+        
+        // Calcola H dalla geometria dell'arco
+        float H = 10f; // Valore di fallback
+        
+        // Stima di H dal momento massimo
+        if (results.momentPoints.Length > 0)
+        {
+            float maxMoment = results.momentPoints.Max();
+            H = maxMoment / archController.archHeight;
+        }
+        
+        // Interpola il taglio alla posizione x
+        float t = Mathf.InverseLerp(archController.ArchStartX, archController.ArchEndX, worldX);
+        int idx = Mathf.Clamp(Mathf.RoundToInt(t * (results.shearPoints.Length - 1)), 0, results.shearPoints.Length - 1);
+        float V = results.shearPoints[idx];
+        
+        return -H * cosTheta - V * sinTheta;
     }
 
     private void RenderDiagram(LineRenderer line, float[] values, float scale, Color color, bool useArchY = false)

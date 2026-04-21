@@ -18,7 +18,7 @@ public static class BeamMath
 {
     private const float EI = 1000f;
 
-    // --- METODO 1: ANALITICO ---
+    // --- METODO 1: ANALITICO PER TRAVI ---
     public static BeamData CalculateAnalytic(float L, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
     {
         List<float> nodes = new List<float> { 0, L };
@@ -90,6 +90,146 @@ public static class BeamMath
             data.shearPoints[j] = -(float)(coeffs[c + 0]);
             data.stressPoints[j] = Mathf.Abs(data.momentPoints[j]) * 0.1f;
         }
+        return data;
+    }
+
+    // --- NUOVO METODO: ANALITICO PER ARCHI PARABOLICI ---
+    public static BeamData CalculateArchAnalytic(float span, float rise, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
+    {
+        Debug.Log($"<color=green>[Arch Solver]</color> Calcolo arco parabolico: Luce={span:F2}, Freccia={rise:F2}");
+
+        // Calcolo della spinta orizzontale H per arco parabolico a tre cerniere
+        float H = 0;
+        
+        // Reazioni vincolari per trave equivalente
+        float sumP = loadP.Sum();
+        float sumM = 0;
+        for (int i = 0; i < loadX.Count; i++)
+        {
+            sumM += loadP[i] * loadX[i];
+        }
+        float RA = sumM / span;
+        float RB = sumP - RA;
+
+        // Calcolo H tramite principio dei lavori virtuali o equilibrio
+        for (int i = 0; i < loadX.Count; i++)
+        {
+            float x = loadX[i];
+            float P = loadP[i];
+            float y_at_load = 4f * rise * x * (span - x) / (span * span);
+            float M_simplySupported = 0;
+            
+            if (x <= span / 2)
+                M_simplySupported = RA * x;
+            else
+                M_simplySupported = RA * x - P * (x - span/2);
+            
+            H += M_simplySupported / rise;
+        }
+        
+        // H per arco parabolico simmetrico
+        if (loadX.Count > 0)
+        {
+            float M_center = 0;
+            float x_center = span / 2;
+            float cumulativeLoad = 0;
+            
+            for (int i = 0; i < loadX.Count; i++)
+            {
+                if (loadX[i] <= x_center)
+                {
+                    M_center += loadP[i] * (x_center - loadX[i]);
+                }
+            }
+            
+            H = M_center / rise;
+        }
+        
+        // Evita divisione per zero
+        if (rise < 0.01f) H = 0;
+        
+        Debug.Log($"Spinta orizzontale H = {H:F2}");
+
+        BeamData data = new BeamData 
+        { 
+            momentPoints = new float[resolution], 
+            shearPoints = new float[resolution], 
+            deflectionPoints = new float[resolution], 
+            stressPoints = new float[resolution] 
+        };
+
+        // Calcolo reazioni vincolari complete
+        float RA_total = 0;
+        float RB_total = 0;
+        
+        for (int i = 0; i < loadX.Count; i++)
+        {
+            RA_total += loadP[i] * (1 - loadX[i] / span);
+            RB_total += loadP[i] * (loadX[i] / span);
+        }
+
+        for (int i = 0; i < resolution; i++)
+        {
+            float x = (span / (resolution - 1)) * i;
+            
+            // Equazione della parabola: y = 4f * x * (L - x) / L²
+            float y = 4f * rise * x * (span - x) / (span * span);
+            
+            // Derivata prima: dy/dx = 4f * (L - 2x) / L²
+            float dydx = 4f * rise * (span - 2 * x) / (span * span);
+            float theta = Mathf.Atan(dydx);
+            
+            // Momento flettente in una trave equivalente semplicemente appoggiata
+            float M0 = 0;
+            for (int j = 0; j < loadX.Count; j++)
+            {
+                if (loadX[j] <= x)
+                {
+                    M0 += RA_total * x;
+                    for (int k = 0; k <= j; k++)
+                    {
+                        if (loadX[k] <= x)
+                            M0 -= loadP[k] * (x - loadX[k]);
+                    }
+                    break;
+                }
+            }
+            
+            // Ricalcolo M0 corretto
+            M0 = 0;
+            float V0 = RA_total;
+            for (int j = 0; j < loadX.Count; j++)
+            {
+                if (loadX[j] <= x)
+                {
+                    M0 += loadP[j] * (x - loadX[j]);
+                }
+            }
+            M0 = RA_total * x - M0;
+            
+            // Momento nell'arco: M = M0 - H * y
+            data.momentPoints[i] = M0 - H * y;
+            
+            // Taglio nell'arco: V = V0 * cos(θ) - H * sin(θ)
+            V0 = RA_total;
+            for (int j = 0; j < loadX.Count; j++)
+            {
+                if (loadX[j] <= x)
+                    V0 -= loadP[j];
+            }
+            
+            data.shearPoints[i] = V0 * Mathf.Cos(theta) - H * Mathf.Sin(theta);
+            
+            // Sforzo normale: N = -V0 * sin(θ) - H * cos(θ)
+            float N = -V0 * Mathf.Sin(theta) - H * Mathf.Cos(theta);
+            
+            // Stress combinato (tensione ideale)
+            data.stressPoints[i] = Mathf.Abs(data.momentPoints[i]) * 0.15f + Mathf.Abs(N) * 0.05f;
+            
+            // Deflessione approssimata
+            data.deflectionPoints[i] = -data.momentPoints[i] / (EI * 5f);
+        }
+
         return data;
     }
 
