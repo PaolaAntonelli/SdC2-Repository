@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections.Generic;
 
 /// <summary>
 /// Gestisce lo switching tra trave e arco e coordina i componenti.
@@ -94,5 +95,52 @@ public class StructureManager : MonoBehaviour
         currentMode = StructureMode.Arch;
         
         Debug.Log("StructureManager: Modalità Arco");
+    }
+    
+    /// <summary>
+    /// Ottiene tutti gli elementi (supporti e carichi) nella scena
+    /// </summary>
+    private GameObject[] GetAllElements()
+    {
+        var list = new List<GameObject>();
+        list.AddRange(GameObject.FindGameObjectsWithTag("Support"));
+        list.AddRange(GameObject.FindGameObjectsWithTag("Load"));
+        return list.ToArray();
+    }
+    
+    /// <summary>
+    /// Resetta la struttura rimuovendo tutti i carichi e supporti
+    /// </summary>
+    public void ResetStructure()
+    {
+        // Distruggi tutti i carichi e supporti esistenti
+        foreach (var obj in GetAllElements())
+        {
+            if (obj != null)
+                Destroy(obj);
+        }
+        
+        // Resetta lo stato dei risultati
+        if (beamController != null)
+            beamController.ResetResults();  // Useremo un nuovo metodo pubblico
+        
+        if (archController != null)
+            archController.ResetMesh();
+        
+        // Ricrea la configurazione iniziale dopo un breve delay
+        Invoke(nameof(SetupInitialScenario), 0.1f);
+    }
+    
+    /// <summary>
+    /// Configura la situazione iniziale con due supporti e un carico centrale
+    /// </summary>
+    private void SetupInitialScenario()
+    {
+        if (beamController == null) return;
+        
+        beamController.UpdateBeamDimensions();
+        beamController.SpawnSupport(beamController.BeamStartX);
+        beamController.SpawnSupport(beamController.BeamStartX + beamController.BeamLength);
+        beamController.SpawnLoad(beamController.BeamStartX + (beamController.BeamLength / 2f));
     }
 }

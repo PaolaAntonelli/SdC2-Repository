@@ -262,19 +262,22 @@ public class BeamController : MonoBehaviour
             archController.ResetMesh();
         }
         
+        // Resetta lo stato dei risultati
+        ResetResults();
+        
         Invoke("SetupInitialScenario", 0.05f);
     }
 
     void SetupInitialScenario()
     {
         UpdateBeamDimensions();
-        SpawnAtPosition(supportPrefab, BeamStartX, -0.6f);
-        SpawnAtPosition(supportPrefab, BeamStartX + BeamLength, -0.6f);
-        SpawnAtPosition(loadPrefab, BeamStartX + (BeamLength / 2f), 0.6f);
+        SpawnSupport(BeamStartX);
+        SpawnSupport(BeamStartX + BeamLength);
+        SpawnLoad(BeamStartX + (BeamLength / 2f));
     }
 
-    public void AddSupport() => SpawnAtPosition(supportPrefab, GetValidSpawnX(), -0.6f);
-    public void AddLoad() => SpawnAtPosition(loadPrefab, GetValidSpawnX(), 0.6f);
+    public void AddSupport() => SpawnSupport(GetValidSpawnX());
+    public void AddLoad() => SpawnLoad(GetValidSpawnX());
 
     float GetValidSpawnX()
     {
@@ -292,20 +295,46 @@ public class BeamController : MonoBehaviour
         return center;
     }
 
-    private GameObject SpawnAtPosition(GameObject prefab, float worldX, float yOff)
+    /// <summary>
+    /// Spawna un supporto in una posizione specifica
+    /// </summary>
+    public void SpawnSupport(float worldX)
     {
-        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y + yOff, beamObject.transform.position.z);
-        GameObject inst = Instantiate(prefab, pos, Quaternion.identity);
+        if (supportPrefab == null) return;
+        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y - 0.6f, beamObject.transform.position.z);
+        GameObject inst = Instantiate(supportPrefab, pos, Quaternion.identity);
         if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
-        return inst;
     }
 
-    void UpdateBeamDimensions()
+    /// <summary>
+    /// Spawna un carico in una posizione specifica
+    /// </summary>
+    public void SpawnLoad(float worldX)
+    {
+        if (loadPrefab == null) return;
+        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y + 0.6f, beamObject.transform.position.z);
+        GameObject inst = Instantiate(loadPrefab, pos, Quaternion.identity);
+        if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
+    }
+
+    /// <summary>
+    /// Aggiorna le dimensioni della trave
+    /// </summary>
+    public void UpdateBeamDimensions()
     {
         Renderer r = beamObject.GetComponent<Renderer>();
         if (r == null) return;
         BeamLength = r.bounds.size.x;
         BeamStartX = r.bounds.min.x;
+    }
+
+    /// <summary>
+    /// Resetta lo stato dei risultati
+    /// </summary>
+    public void ResetResults()
+    {
+        HasResults = false;
+        Results = default(BeamData);
     }
 
     GameObject[] GetAllElements()
