@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.UI;
+using System.Collections;
 
 public class BeamController : MonoBehaviour
 {
@@ -54,6 +55,7 @@ public class BeamController : MonoBehaviour
         archController = GetComponent<ArchController>();
         stressVisualizer = GetComponent<StressVisualizer>();
 
+
         if (beamObject != null)
         {
             meshFilter = beamObject.GetComponent<MeshFilter>();
@@ -72,10 +74,26 @@ public class BeamController : MonoBehaviour
 
             DetectMeshAxes(sourceMesh);
             UpdateBeamDimensions();
-            SetupInitialScenario();
+            StartCoroutine(DelayedConfiguration());
         }
 
         HasResults = false;
+    }
+
+    private void CleanupAllElements()
+    {
+        // Rimuovi tutti i supporti e carichi esistenti
+        var supports = GameObject.FindGameObjectsWithTag("Support");
+        var loads = GameObject.FindGameObjectsWithTag("Load");
+        
+        foreach (var obj in supports) 
+        {
+            if (obj != null) DestroyImmediate(obj);
+        }
+        foreach (var obj in loads) 
+        {
+            if (obj != null) DestroyImmediate(obj);
+        }
     }
 
     void DetectMeshAxes(Mesh m)
@@ -254,8 +272,8 @@ public class BeamController : MonoBehaviour
 
     public void ResetStructure()
     {
-        foreach (GameObject obj in GetAllElements()) Destroy(obj);
-        
+        ResetToDefaultConfiguration();
+    
         // Reset della mesh dell'arco se attivo
         if (currentStructure == BeamStructureType.Arch && archController != null)
         {
@@ -264,8 +282,6 @@ public class BeamController : MonoBehaviour
         
         // Resetta lo stato dei risultati
         ResetResults();
-        
-        Invoke("SetupInitialScenario", 0.05f);
     }
 
     void SetupInitialScenario()
@@ -386,5 +402,43 @@ public class BeamController : MonoBehaviour
         }
         
         HasResults = false;
+    }
+
+    public void ResetToDefaultConfiguration()
+    {
+    // Pulisci tutto
+    CleanupAllElements();
+    
+    // Aggiorna le dimensioni nuovamente per sicurezza
+    UpdateBeamDimensions();
+    
+    // Verifica che le dimensioni siano valide
+    if (BeamLength <= 0.01f)
+    {
+        Debug.LogWarning($"BeamLength non valida: {BeamLength}, riprovo tra poco...");
+        Invoke(nameof(ResetToDefaultConfiguration), 0.1f);
+        return;
+    }
+    
+    // Crea due supporti (estremità sinistra e destra)
+    SpawnSupport(BeamStartX);
+    SpawnSupport(BeamStartX + BeamLength);
+    
+    // Crea un carico in mezzeria
+    SpawnLoad(BeamStartX + (BeamLength / 2f));
+    
+    Debug.Log($"Configurazione resettata: supporti a {BeamStartX:F2} e {BeamStartX + BeamLength:F2}, carico in mezzeria ({BeamStartX + BeamLength/2f:F2})");
+    }
+
+    private IEnumerator DelayedConfiguration()
+    {
+    // Aspetta un frame per assicurarsi che il rendering sia completo
+    yield return null;
+    
+    // Aggiorna le dimensioni di nuovo
+    UpdateBeamDimensions();
+    
+    // Configura la situazione iniziale
+    ResetToDefaultConfiguration();
     }
 }

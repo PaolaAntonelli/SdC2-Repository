@@ -36,6 +36,19 @@ public class StructureManager : MonoBehaviour
         
         // Imposta modalità iniziale
         SwitchToBeam();
+
+        if (beamController != null)
+        {
+            Invoke(nameof(ForceDefaultConfiguration), 0.1f);
+        }
+    }
+
+    private void ForceDefaultConfiguration()
+    {
+        if (beamController != null)
+        {
+            beamController.ResetToDefaultConfiguration();
+        }
     }
     
     private void SetupUI()
@@ -77,24 +90,30 @@ public class StructureManager : MonoBehaviour
     
     public void SwitchToBeam()
     {
-        if (currentMode == StructureMode.Beam) return;
-        
-        archController?.DeactivateArchMode();
-        beamController.currentStructure = BeamStructureType.Beam;
-        currentMode = StructureMode.Beam;
-        
-        Debug.Log("StructureManager: Modalità Trave");
+    if (currentMode == StructureMode.Beam) return;
+    
+    archController?.DeactivateArchMode();
+    beamController.currentStructure = BeamStructureType.Beam;
+    currentMode = StructureMode.Beam;
+    
+    // Forza la configurazione predefinita per la trave
+    beamController.ResetToDefaultConfiguration();
+    
+    Debug.Log("StructureManager: Modalità Trave - Configurazione resettata");
     }
     
     public void SwitchToArch()
     {
-        if (currentMode == StructureMode.Arch) return;
-        
-        archController?.ActivateArchMode();
-        beamController.currentStructure = BeamStructureType.Arch;
-        currentMode = StructureMode.Arch;
-        
-        Debug.Log("StructureManager: Modalità Arco");
+    if (currentMode == StructureMode.Arch) return;
+    
+    archController?.ActivateArchMode();
+    beamController.currentStructure = BeamStructureType.Arch;
+    currentMode = StructureMode.Arch;
+    
+    // Forza la configurazione predefinita anche per l'arco
+    beamController.ResetToDefaultConfiguration();
+    
+    Debug.Log("StructureManager: Modalità Arco - Configurazione resettata");
     }
     
     /// <summary>
@@ -113,22 +132,15 @@ public class StructureManager : MonoBehaviour
     /// </summary>
     public void ResetStructure()
     {
-        // Distruggi tutti i carichi e supporti esistenti
-        foreach (var obj in GetAllElements())
-        {
-            if (obj != null)
-                Destroy(obj);
-        }
-        
-        // Resetta lo stato dei risultati
-        if (beamController != null)
-            beamController.ResetResults();  // Useremo un nuovo metodo pubblico
-        
-        if (archController != null)
-            archController.ResetMesh();
-        
-        // Ricrea la configurazione iniziale dopo un breve delay
-        Invoke(nameof(SetupInitialScenario), 0.1f);
+    if (beamController != null)
+    {
+        beamController.ResetToDefaultConfiguration();
+    }
+    
+    if (archController != null)
+    {
+        archController.ResetMesh();
+    }
     }
     
     /// <summary>
