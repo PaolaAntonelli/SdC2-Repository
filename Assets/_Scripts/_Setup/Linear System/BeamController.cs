@@ -202,26 +202,36 @@ public class BeamController : MonoBehaviour
     void RenderDiagramForArch(LineRenderer line, float[] values, float scale, Color color)
     {
         if (line == null) return;
-        if (archController == null || !archController.IsActive) return;
+    if (archController == null || !archController.IsActive) return;
+    
+    line.positionCount = values.Length;
+    line.startColor = color;
+    line.endColor = color;
+    
+    // Usa i limiti dell'arco
+    float startX = archController.ArchStartX;
+    float endX = archController.ArchEndX;
+    float length = archController.ArchLength;
+    
+    for (int i = 0; i < values.Length; i++)
+    {
+        float t = (float)i / (values.Length - 1);
+        float x = Mathf.Lerp(startX, endX, t);
         
-        line.positionCount = values.Length;
-        line.startColor = color;
-        line.endColor = color;
+        // Altezza sulla curva dell'arco (formula liscia, non segmentata)
+        float yOnArch = archController.GetArchHeightAtX(x);
         
-        // Usa le dimensioni dell'arco invece di quelle della trave
-        float startX = archController.ArchStartX;
-        float length = archController.ArchLength;
-        float archBaseY = archController.GetArchBaseY();
+        // Ottieni la normale per spostare il diagramma perpendicolarmente all'arco
+        Vector3 normal = archController.GetArchNormalAtX(x);
         
-        for (int i = 0; i < values.Length; i++)
-        {
-            float x = startX + (i * (length / (values.Length - 1)));
-            float y = archController.GetArchHeightAtX(x);
-            
-            // Il diagramma viene disegnato lungo l'arco, spostato verso l'alto o il basso
-            Vector3 pos = new Vector3(x, y + values[i] * scale, beamObject.transform.position.z);
-            line.SetPosition(i, pos);
-        }
+        // Posizione base sull'arco
+        Vector3 basePos = new Vector3(x, yOnArch, beamObject.transform.position.z);
+        
+        // Sposta il diagramma lungo la normale
+        Vector3 diagramPos = basePos + normal * values[i] * scale;
+        
+        line.SetPosition(i, diagramPos);
+    }
     }
 
     float GetArchY(float x)

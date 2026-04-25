@@ -19,13 +19,13 @@ public class ArchController : MonoBehaviour
     private Mesh originalArchMesh;
     private Mesh workingMesh;
     private Vector3[] originalVertices;
-    private Vector3[] originalNormals;
     
     private BeamController beamController;
     
     public float ArchStartX { get; private set; }
     public float ArchEndX { get; private set; }
     public float ArchLength { get; private set; }
+    public float ArchActualHeight { get; private set; }  // Altezza reale dalla mesh
     public bool IsActive { get; private set; }
     
     void Start()
@@ -35,18 +35,12 @@ public class ArchController : MonoBehaviour
             beamController = FindFirstObjectByType<BeamController>();
     }
     
-    /// <summary>
-    /// Ottiene la Y di base dell'arco (il punto più basso)
-    /// </summary>
     public float GetArchBaseY()
     {
         if (archInstance == null) return 0;
         return archInstance.transform.position.y;
     }
     
-    /// <summary>
-    /// Aggiorna le dimensioni dell'arco dalla mesh attuale
-    /// </summary>
     public void UpdateArchDimensions()
     {
         if (archInstance == null) return;
@@ -58,6 +52,7 @@ public class ArchController : MonoBehaviour
             ArchStartX = bounds.min.x;
             ArchEndX = bounds.max.x;
             ArchLength = bounds.size.x;
+            ArchActualHeight = bounds.size.y;  // Altezza reale della mesh
         }
         else if (archFilter != null && workingMesh != null)
         {
@@ -66,9 +61,58 @@ public class ArchController : MonoBehaviour
             ArchStartX = worldPos.x;
             ArchLength = bounds.size.x * archInstance.transform.localScale.x;
             ArchEndX = ArchStartX + ArchLength;
+            ArchActualHeight = bounds.size.y * archInstance.transform.localScale.y;
         }
         
-        Debug.Log($"Arch dimensions updated: StartX={ArchStartX}, EndX={ArchEndX}, Length={ArchLength}");
+        // Se abbiamo un'altezza reale diversa da quella impostata, aggiorniamo archHeight
+        if (ArchActualHeight > 0 && Mathf.Abs(archHeight - ArchActualHeight) > 0.01f)
+        {
+            Debug.Log($"Updating archHeight from {archHeight} to actual {ArchActualHeight}");
+            archHeight = ArchActualHeight;
+            if (beamController != null)
+                beamController.archHeight = ArchActualHeight;
+        }
+        
+        Debug.Log($"Arch: StartX={ArchStartX}, EndX={ArchEndX}, Length={ArchLength}, Height={ArchActualHeight}");
+    }
+    
+    /// <summary>
+    /// Calcola l'altezza usando la formula matematica (curva liscia)
+    /// </summary>
+    public float GetArchHeightAtX(float worldX)
+    {
+        if (!IsActive || archInstance == null) return 0;
+        
+        float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
+        t = Mathf.Clamp01(t);
+        
+        // Parabola: y = 4 * h * t * (1 - t)
+        float baseY = archInstance.transform.position.y;
+        return baseY + archHeight * 4 * t * (1 - t);
+    }
+    
+    /// <summary>
+    /// Ottiene la tangente dell'arco a una data X (per disegnare diagrammi)
+    /// </summary>
+    public Vector3 GetArchTangentAtX(float worldX)
+    {
+        if (!IsActive) return Vector3.right;
+        
+        float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
+        t = Mathf.Clamp01(t);
+        
+        // Derivata: dy/dx = (4 * h * (1 - 2*t)) / Length
+        float dydx = (archHeight * 4 * (1 - 2 * t)) / ArchLength;
+        return new Vector3(1, dydx, 0).normalized;
+    }
+    
+    /// <summary>
+    /// Ottiene la normale all'arco (perpendicolare alla tangente)
+    /// </summary>
+    public Vector3 GetArchNormalAtX(float worldX)
+    {
+        Vector3 tangent = GetArchTangentAtX(worldX);
+        return new Vector3(-tangent.y, tangent.x, 0).normalized;
     }
     
     public void ActivateArchMode()
@@ -94,18 +138,16 @@ public class ArchController : MonoBehaviour
         archFilter = archInstance.GetComponent<MeshFilter>();
         archRenderer = archInstance.GetComponent<MeshRenderer>();
         
-        if (archFilter != null)
+        if (archFilter != null && archFilter.sharedMesh != null)
         {
             originalArchMesh = archFilter.sharedMesh;
             workingMesh = Instantiate(originalArchMesh);
             workingMesh.name = "Arch_WorkingMesh";
             archFilter.mesh = workingMesh;
-            
             originalVertices = originalArchMesh.vertices;
-            originalNormals = originalArchMesh.normals;
         }
         
-        // Forza l'aggiornamento delle dimensioni dopo un frame
+        // Aspetta un frame per avere i bounds corretti
         Invoke(nameof(UpdateArchDimensions), 0.02f);
         
         IsActive = true;
@@ -124,60 +166,28 @@ public class ArchController : MonoBehaviour
         Debug.Log("ArchController: Modalità trave attivata");
     }
     
-    private void CalculateArchDimensions()
-    {
-        UpdateArchDimensions();
-    }
-    
-    public float GetArchHeightAtX(float worldX)
-    {
-        if (!IsActive || archInstance == null) return 0;
-        
-        float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
-        t = Mathf.Clamp01(t);
-        
-        // Equazione parabolica: y = 4 * h * t * (1 - t)
-        float baseY = archInstance.transform.position.y;
-        return baseY + archHeight * 4 * t * (1 - t);
-    }
-    
-    public Vector3 GetArchTangentAtX(float worldX)
-    {
-        if (!IsActive) return Vector3.right;
-        
-        float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
-        t = Mathf.Clamp01(t);
-        
-        // Derivata di y = 4*h*t*(1-t) rispetto a x
-        // dy/dx = (dy/dt) / (dx/dt) = (4*h*(1-2*t)) / ArchLength
-        float dydx = (archHeight * 4 * (1 - 2 * t)) / ArchLength;
-        return new Vector3(1, dydx, 0).normalized;
-    }
-    
-    public Vector3 GetArchNormalAtX(float worldX)
-    {
-        Vector3 tangent = GetArchTangentAtX(worldX);
-        return new Vector3(-tangent.y, tangent.x, 0).normalized;
-    }
-    
     public void ApplyDeflection(float[] deflections, float visualScale)
     {
-        if (!IsActive || workingMesh == null) return;
+        if (!IsActive || workingMesh == null || originalVertices == null) return;
         if (deflections == null || deflections.Length == 0) return;
         
         UpdateArchDimensions();
         
         Vector3[] displaced = new Vector3[originalVertices.Length];
+        Vector3 localUp = archInstance.transform.InverseTransformDirection(Vector3.up);
         
         for (int i = 0; i < originalVertices.Length; i++)
         {
             Vector3 v = originalVertices[i];
             Vector3 worldPos = archInstance.transform.TransformPoint(v);
-            float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldPos.x);
             
+            // Trova la posizione relativa lungo l'arco
+            float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldPos.x);
             int idx = Mathf.Clamp(Mathf.RoundToInt(t * (deflections.Length - 1)), 0, deflections.Length - 1);
+            
             float deflection = deflections[idx] * visualScale;
             
+            // Applica deflessione lungo la normale all'arco
             Vector3 normal = GetArchNormalAtX(worldPos.x);
             displaced[i] = v + archInstance.transform.InverseTransformDirection(normal) * deflection;
         }
