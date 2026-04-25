@@ -1,20 +1,16 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-/// <summary>
-/// Gestisce la geometria e i calcoli specifici per strutture ad arco.
-/// Coesiste con BeamController senza modificarlo.
-/// </summary>
 public class ArchController : MonoBehaviour
 {
     [Header("Arch Geometry")]
-    public GameObject archPrefab;           // Il tuo prefab "Arco geometry"
+    public GameObject archPrefab;
     public float archHeight = 2f;
     public int archSegments = 50;
     
     [Header("Stress Visualization")]
-    public Material stressMaterial;          // Materiale per la heatmap
-    public Gradient stressGradient;          // Blu (compressione) -> Rosso (trazione)
+    public Material stressMaterial;
+    public Gradient stressGradient;
     public float stressScaleMultiplier = 1f;
     
     private GameObject archInstance;
@@ -25,10 +21,8 @@ public class ArchController : MonoBehaviour
     private Vector3[] originalVertices;
     private Vector3[] originalNormals;
     
-    // Riferimenti esterni
     private BeamController beamController;
     
-    // Proprietà pubbliche
     public float ArchStartX { get; private set; }
     public float ArchEndX { get; private set; }
     public float ArchLength { get; private set; }
@@ -42,8 +36,41 @@ public class ArchController : MonoBehaviour
     }
     
     /// <summary>
-    /// Attiva la modalità arco sostituendo la geometria
+    /// Ottiene la Y di base dell'arco (il punto più basso)
     /// </summary>
+    public float GetArchBaseY()
+    {
+        if (archInstance == null) return 0;
+        return archInstance.transform.position.y;
+    }
+    
+    /// <summary>
+    /// Aggiorna le dimensioni dell'arco dalla mesh attuale
+    /// </summary>
+    public void UpdateArchDimensions()
+    {
+        if (archInstance == null) return;
+        
+        Renderer renderer = archInstance.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            Bounds bounds = renderer.bounds;
+            ArchStartX = bounds.min.x;
+            ArchEndX = bounds.max.x;
+            ArchLength = bounds.size.x;
+        }
+        else if (archFilter != null && workingMesh != null)
+        {
+            Bounds bounds = workingMesh.bounds;
+            Vector3 worldPos = archInstance.transform.TransformPoint(bounds.min);
+            ArchStartX = worldPos.x;
+            ArchLength = bounds.size.x * archInstance.transform.localScale.x;
+            ArchEndX = ArchStartX + ArchLength;
+        }
+        
+        Debug.Log($"Arch dimensions updated: StartX={ArchStartX}, EndX={ArchEndX}, Length={ArchLength}");
+    }
+    
     public void ActivateArchMode()
     {
         if (archPrefab == null)
@@ -52,22 +79,18 @@ public class ArchController : MonoBehaviour
             return;
         }
         
-        // Disattiva la geometria della trave
         if (beamController != null && beamController.beamObject != null)
             beamController.beamObject.SetActive(false);
         
-        // Istanzia l'arco
         archInstance = Instantiate(archPrefab, transform);
         archInstance.name = "Arch_Instance";
         
-        // Posiziona l'arco nella stessa posizione della trave
         if (beamController != null && beamController.beamObject != null)
         {
             archInstance.transform.position = beamController.beamObject.transform.position;
             archInstance.transform.rotation = beamController.beamObject.transform.rotation;
         }
         
-        // Ottieni riferimenti alla mesh
         archFilter = archInstance.GetComponent<MeshFilter>();
         archRenderer = archInstance.GetComponent<MeshRenderer>();
         
@@ -82,16 +105,13 @@ public class ArchController : MonoBehaviour
             originalNormals = originalArchMesh.normals;
         }
         
-        // Calcola le dimensioni dell'arco
-        CalculateArchDimensions();
+        // Forza l'aggiornamento delle dimensioni dopo un frame
+        Invoke(nameof(UpdateArchDimensions), 0.02f);
         
         IsActive = true;
         Debug.Log("ArchController: Modalità arco attivata");
     }
     
-    /// <summary>
-    /// Torna alla modalità trave
-    /// </summary>
     public void DeactivateArchMode()
     {
         if (archInstance != null)
@@ -104,74 +124,61 @@ public class ArchController : MonoBehaviour
         Debug.Log("ArchController: Modalità trave attivata");
     }
     
-    /// <summary>
-    /// Calcola le dimensioni dell'arco dalla mesh
-    /// </summary>
     private void CalculateArchDimensions()
     {
-        if (archFilter == null) return;
-        
-        Bounds bounds = workingMesh.bounds;
-        ArchLength = bounds.size.x;
-        ArchStartX = bounds.min.x;
-        ArchEndX = bounds.max.x;
+        UpdateArchDimensions();
     }
     
-    /// <summary>
-    /// Ottiene l'altezza Y dell'arco a una data coordinata X
-    /// </summary>
     public float GetArchHeightAtX(float worldX)
     {
-        if (!IsActive) return 0;
+        if (!IsActive || archInstance == null) return 0;
         
         float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
-        // Equazione parabolica standard per archi
-        return archInstance.transform.position.y + archHeight * 4 * t * (1 - t);
+        t = Mathf.Clamp01(t);
+        
+        // Equazione parabolica: y = 4 * h * t * (1 - t)
+        float baseY = archInstance.transform.position.y;
+        return baseY + archHeight * 4 * t * (1 - t);
     }
     
-    /// <summary>
-    /// Ottiene la tangente (direzione) dell'arco a una data X
-    /// </summary>
     public Vector3 GetArchTangentAtX(float worldX)
     {
         if (!IsActive) return Vector3.right;
         
         float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
-        // Derivata della parabola: dy/dx = archHeight * 4 * (1 - 2t) / ArchLength
-        float dydx = archHeight * 4 * (1 - 2 * t) / ArchLength;
+        t = Mathf.Clamp01(t);
+        
+        // Derivata di y = 4*h*t*(1-t) rispetto a x
+        // dy/dx = (dy/dt) / (dx/dt) = (4*h*(1-2*t)) / ArchLength
+        float dydx = (archHeight * 4 * (1 - 2 * t)) / ArchLength;
         return new Vector3(1, dydx, 0).normalized;
     }
     
-    /// <summary>
-    /// Ottiene la normale dell'arco a una data X
-    /// </summary>
     public Vector3 GetArchNormalAtX(float worldX)
     {
         Vector3 tangent = GetArchTangentAtX(worldX);
         return new Vector3(-tangent.y, tangent.x, 0).normalized;
     }
     
-    /// <summary>
-    /// Applica la deformazione all'arco (per visualizzare la deflessione)
-    /// </summary>
     public void ApplyDeflection(float[] deflections, float visualScale)
     {
         if (!IsActive || workingMesh == null) return;
+        if (deflections == null || deflections.Length == 0) return;
+        
+        UpdateArchDimensions();
         
         Vector3[] displaced = new Vector3[originalVertices.Length];
-        Vector3[] colors = new Vector3[originalVertices.Length];
         
         for (int i = 0; i < originalVertices.Length; i++)
         {
             Vector3 v = originalVertices[i];
-            float worldX = archInstance.transform.TransformPoint(v).x;
-            float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldX);
+            Vector3 worldPos = archInstance.transform.TransformPoint(v);
+            float t = Mathf.InverseLerp(ArchStartX, ArchEndX, worldPos.x);
             
             int idx = Mathf.Clamp(Mathf.RoundToInt(t * (deflections.Length - 1)), 0, deflections.Length - 1);
             float deflection = deflections[idx] * visualScale;
             
-            // La deflessione è applicata lungo la normale locale (verticale per deflessione)
-            Vector3 normal = GetArchNormalAtX(worldX);
+            Vector3 normal = GetArchNormalAtX(worldPos.x);
             displaced[i] = v + archInstance.transform.InverseTransformDirection(normal) * deflection;
         }
         
@@ -180,9 +187,6 @@ public class ArchController : MonoBehaviour
         workingMesh.RecalculateBounds();
     }
     
-    /// <summary>
-    /// Resetta la mesh alla forma originale
-    /// </summary>
     public void ResetMesh()
     {
         if (workingMesh != null && originalVertices != null)
@@ -193,14 +197,12 @@ public class ArchController : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Visualizza le sollecitazioni come heatmap sulla mesh
-    /// </summary>
     public void VisualizeStress(float[] stressValues, float maxStress)
     {
         if (!IsActive || workingMesh == null || stressMaterial == null) return;
         
-        // Crea array di colori per i vertici
+        UpdateArchDimensions();
+        
         Color[] vertexColors = new Color[workingMesh.vertexCount];
         
         for (int i = 0; i < vertexColors.Length; i++)
@@ -211,13 +213,11 @@ public class ArchController : MonoBehaviour
             int idx = Mathf.Clamp(Mathf.RoundToInt(t * (stressValues.Length - 1)), 0, stressValues.Length - 1);
             float normalizedStress = Mathf.Clamp01(Mathf.Abs(stressValues[idx]) / maxStress);
             
-            // Usa il gradiente per il colore
             vertexColors[i] = stressGradient.Evaluate(normalizedStress);
         }
         
         workingMesh.colors = vertexColors;
         
-        // Applica il materiale se non già presente
         if (archRenderer != null && archRenderer.sharedMaterial != stressMaterial)
             archRenderer.material = stressMaterial;
     }

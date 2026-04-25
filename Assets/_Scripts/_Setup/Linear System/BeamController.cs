@@ -51,10 +51,8 @@ public class BeamController : MonoBehaviour
 
     void Start()
     {
-        // Ottieni riferimenti ai componenti aggiuntivi
         archController = GetComponent<ArchController>();
         stressVisualizer = GetComponent<StressVisualizer>();
-
 
         if (beamObject != null)
         {
@@ -82,7 +80,6 @@ public class BeamController : MonoBehaviour
 
     private void CleanupAllElements()
     {
-        // Rimuovi tutti i supporti e carichi esistenti
         var supports = GameObject.FindGameObjectsWithTag("Support");
         var loads = GameObject.FindGameObjectsWithTag("Load");
         
@@ -112,7 +109,18 @@ public class BeamController : MonoBehaviour
     void Update()
     {
         if (beamObject == null) return;
-        UpdateBeamDimensions();
+        
+        // Aggiorna le dimensioni in base alla struttura attuale
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            archController.UpdateArchDimensions();
+            BeamStartX = archController.ArchStartX;
+            BeamLength = archController.ArchLength;
+        }
+        else
+        {
+            UpdateBeamDimensions();
+        }
 
         List<float> sPos = GetRelativePositions("Support");
         List<float> lPos = GetRelativePositions("Load");
@@ -132,12 +140,11 @@ public class BeamController : MonoBehaviour
                 results = BeamMath.CalculateFEM(BeamLength, lPos, lMag, sPos, 100);
             }
 
-            // Store results for stress visualization
             Results = results;
             HasResults = true;
 
             // Render diagrams according to structure type
-            if (currentStructure == BeamStructureType.Arch)
+            if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
             {
                 RenderDiagramForArch(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
                 RenderDiagramForArch(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
@@ -148,7 +155,6 @@ public class BeamController : MonoBehaviour
                 RenderDiagram(momentLine, results.momentPoints, currentDiagramScale, Color.magenta);
             }
 
-            // Aggiorna la visualizzazione per l'arco se attivo
             UpdateArchVisualization();
 
             if (showDeflection)
@@ -180,9 +186,6 @@ public class BeamController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Aggiorna la visualizzazione specifica per l'arco
-    /// </summary>
     public void UpdateArchVisualization()
     {
         if (currentStructure != BeamStructureType.Arch) return;
@@ -190,31 +193,44 @@ public class BeamController : MonoBehaviour
         if (!archController.IsActive) return;
         if (!HasResults) return;
 
-        // Se lo stress visualizer è presente, forzalo ad aggiornarsi
         if (stressVisualizer != null)
         {
             stressVisualizer.enabled = true;
         }
     }
 
-    // New method for arch diagram rendering
     void RenderDiagramForArch(LineRenderer line, float[] values, float scale, Color color)
     {
         if (line == null) return;
+        if (archController == null || !archController.IsActive) return;
+        
         line.positionCount = values.Length;
         line.startColor = color;
         line.endColor = color;
         
+        // Usa le dimensioni dell'arco invece di quelle della trave
+        float startX = archController.ArchStartX;
+        float length = archController.ArchLength;
+        float archBaseY = archController.GetArchBaseY();
+        
         for (int i = 0; i < values.Length; i++)
         {
-            float x = BeamStartX + (i * (BeamLength / (values.Length - 1)));
-            float y = GetArchY(x);
-            line.SetPosition(i, new Vector3(x, y + values[i] * scale, beamObject.transform.position.z));
+            float x = startX + (i * (length / (values.Length - 1)));
+            float y = archController.GetArchHeightAtX(x);
+            
+            // Il diagramma viene disegnato lungo l'arco, spostato verso l'alto o il basso
+            Vector3 pos = new Vector3(x, y + values[i] * scale, beamObject.transform.position.z);
+            line.SetPosition(i, pos);
         }
     }
 
     float GetArchY(float x)
     {
+        if (archController != null && archController.IsActive)
+        {
+            return archController.GetArchHeightAtX(x);
+        }
+        
         float t = (x - BeamStartX) / BeamLength;
         return beamObject.transform.position.y + archHeight * 4 * t * (1 - t);
     }
@@ -252,7 +268,6 @@ public class BeamController : MonoBehaviour
     { 
         showDeflection = !showDeflection;
         
-        // Se disattiviamo la deflessione, resettiamo anche la mesh dell'arco
         if (!showDeflection && currentStructure == BeamStructureType.Arch && archController != null)
         {
             archController.ResetMesh();
@@ -263,7 +278,6 @@ public class BeamController : MonoBehaviour
     { 
         currentDiagramScale = s;
         
-        // Propaga la scala anche allo stress visualizer
         if (stressVisualizer != null)
         {
             stressVisualizer.SetDiagramScale(s);
@@ -274,13 +288,11 @@ public class BeamController : MonoBehaviour
     {
         ResetToDefaultConfiguration();
     
-        // Reset della mesh dell'arco se attivo
         if (currentStructure == BeamStructureType.Arch && archController != null)
         {
             archController.ResetMesh();
         }
         
-        // Resetta lo stato dei risultati
         ResetResults();
     }
 
@@ -311,31 +323,38 @@ public class BeamController : MonoBehaviour
         return center;
     }
 
-    /// <summary>
-    /// Spawna un supporto in una posizione specifica
-    /// </summary>
     public void SpawnSupport(float worldX)
     {
         if (supportPrefab == null) return;
-        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y - 0.6f, beamObject.transform.position.z);
+        
+        // Ottieni la Y corretta in base alla struttura attuale
+        float yPos = beamObject.transform.position.y - 0.6f;
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            yPos = archController.GetArchHeightAtX(worldX) - 0.6f;
+        }
+        
+        Vector3 pos = new Vector3(worldX, yPos, beamObject.transform.position.z);
         GameObject inst = Instantiate(supportPrefab, pos, Quaternion.identity);
         if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
     }
 
-    /// <summary>
-    /// Spawna un carico in una posizione specifica
-    /// </summary>
     public void SpawnLoad(float worldX)
     {
         if (loadPrefab == null) return;
-        Vector3 pos = new Vector3(worldX, beamObject.transform.position.y + 0.6f, beamObject.transform.position.z);
+        
+        // Ottieni la Y corretta in base alla struttura attuale
+        float yPos = beamObject.transform.position.y + 0.6f;
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            yPos = archController.GetArchHeightAtX(worldX) + 0.6f;
+        }
+        
+        Vector3 pos = new Vector3(worldX, yPos, beamObject.transform.position.z);
         GameObject inst = Instantiate(loadPrefab, pos, Quaternion.identity);
         if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
     }
 
-    /// <summary>
-    /// Aggiorna le dimensioni della trave
-    /// </summary>
     public void UpdateBeamDimensions()
     {
         Renderer r = beamObject.GetComponent<Renderer>();
@@ -344,9 +363,6 @@ public class BeamController : MonoBehaviour
         BeamStartX = r.bounds.min.x;
     }
 
-    /// <summary>
-    /// Resetta lo stato dei risultati
-    /// </summary>
     public void ResetResults()
     {
         HasResults = false;
@@ -406,39 +422,37 @@ public class BeamController : MonoBehaviour
 
     public void ResetToDefaultConfiguration()
     {
-    // Pulisci tutto
-    CleanupAllElements();
-    
-    // Aggiorna le dimensioni nuovamente per sicurezza
-    UpdateBeamDimensions();
-    
-    // Verifica che le dimensioni siano valide
-    if (BeamLength <= 0.01f)
-    {
-        Debug.LogWarning($"BeamLength non valida: {BeamLength}, riprovo tra poco...");
-        Invoke(nameof(ResetToDefaultConfiguration), 0.1f);
-        return;
-    }
-    
-    // Crea due supporti (estremità sinistra e destra)
-    SpawnSupport(BeamStartX);
-    SpawnSupport(BeamStartX + BeamLength);
-    
-    // Crea un carico in mezzeria
-    SpawnLoad(BeamStartX + (BeamLength / 2f));
-    
-    Debug.Log($"Configurazione resettata: supporti a {BeamStartX:F2} e {BeamStartX + BeamLength:F2}, carico in mezzeria ({BeamStartX + BeamLength/2f:F2})");
+        CleanupAllElements();
+        
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            archController.UpdateArchDimensions();
+            BeamStartX = archController.ArchStartX;
+            BeamLength = archController.ArchLength;
+        }
+        else
+        {
+            UpdateBeamDimensions();
+        }
+        
+        if (BeamLength <= 0.01f)
+        {
+            Debug.LogWarning($"BeamLength non valida: {BeamLength}, riprovo tra poco...");
+            Invoke(nameof(ResetToDefaultConfiguration), 0.1f);
+            return;
+        }
+        
+        SpawnSupport(BeamStartX);
+        SpawnSupport(BeamStartX + BeamLength);
+        SpawnLoad(BeamStartX + (BeamLength / 2f));
+        
+        Debug.Log($"Configurazione resettata: supporti a {BeamStartX:F2} e {BeamStartX + BeamLength:F2}, carico in mezzeria ({BeamStartX + BeamLength/2f:F2})");
     }
 
     private IEnumerator DelayedConfiguration()
     {
-    // Aspetta un frame per assicurarsi che il rendering sia completo
-    yield return null;
-    
-    // Aggiorna le dimensioni di nuovo
-    UpdateBeamDimensions();
-    
-    // Configura la situazione iniziale
-    ResetToDefaultConfiguration();
+        yield return null;
+        UpdateBeamDimensions();
+        ResetToDefaultConfiguration();
     }
 }
