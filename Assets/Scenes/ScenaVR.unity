@@ -3246,6 +3246,13 @@ MonoBehaviour:
   deflectionVisualScale: 100
   diagramOffset: {x: 0, y: 0, z: -0.2}
   minDistanceBetweenObjects: 0.2
+  structureHeightOffsets:
+  - structureType: 0
+    loadHeightOffset: 0.6
+    supportHeightOffset: -0.6
+  - structureType: 1
+    loadHeightOffset: 3
+    supportHeightOffset: -0.6
 --- !u!1 &254091762
 GameObject:
   m_ObjectHideFlags: 0
@@ -17796,6 +17803,13 @@ MonoBehaviour:
   deflectionVisualScale: 100
   diagramOffset: {x: 0, y: -2, z: 0}
   minDistanceBetweenObjects: 0.5
+  structureHeightOffsets:
+  - structureType: 0
+    loadHeightOffset: 0.6
+    supportHeightOffset: -0.6
+  - structureType: 1
+    loadHeightOffset: 2.6
+    supportHeightOffset: -0.6
 --- !u!23 &1473057876
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -20383,6 +20397,13 @@ MonoBehaviour:
   deflectionVisualScale: 100
   diagramOffset: {x: 0, y: -2, z: 0}
   minDistanceBetweenObjects: 0.5
+  structureHeightOffsets:
+  - structureType: 0
+    loadHeightOffset: 0.6
+    supportHeightOffset: -0.6
+  - structureType: 1
+    loadHeightOffset: 2.6
+    supportHeightOffset: -0.6
 --- !u!114 &1704561568
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22429,6 +22450,13 @@ MonoBehaviour:
   deflectionVisualScale: 100
   diagramOffset: {x: 0, y: 0, z: -0.2}
   minDistanceBetweenObjects: 0.2
+  structureHeightOffsets:
+  - structureType: 0
+    loadHeightOffset: 0.6
+    supportHeightOffset: -0.6
+  - structureType: 1
+    loadHeightOffset: 2.6
+    supportHeightOffset: -0.6
 --- !u!1 &1848176255
 GameObject:
   m_ObjectHideFlags: 0

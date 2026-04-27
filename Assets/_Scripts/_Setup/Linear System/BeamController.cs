@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine.UI;
 using System.Collections;
+using System;
 
 public class BeamController : MonoBehaviour
 {
@@ -25,6 +26,24 @@ public class BeamController : MonoBehaviour
     public Vector3 diagramOffset = new Vector3(0, -2f, 0);
     public float minDistanceBetweenObjects = 0.5f;
 
+    [Header("Height Offsets")]
+    [Tooltip("Offset di altezza per carichi e supporti per ogni tipo di struttura")]
+    public List<StructureHeightOffset> structureHeightOffsets = new List<StructureHeightOffset>
+    {
+        new StructureHeightOffset 
+        { 
+            structureType = BeamStructureType.Beam, 
+            loadHeightOffset = 0.6f,
+            supportHeightOffset = -0.6f
+        },
+        new StructureHeightOffset 
+        { 
+            structureType = BeamStructureType.Arch, 
+            loadHeightOffset = 2.6f,
+            supportHeightOffset = -0.6f
+        }
+    };
+
     private bool showDeflection = false;
     private Vector3[] originalVertices;
     private Mesh deformingMesh;
@@ -36,11 +55,9 @@ public class BeamController : MonoBehaviour
     public float BeamStartX { get; private set; }
     public float BeamLength { get; private set; }
 
-    // Store results for stress visualization
     public BeamData Results { get; private set; }
     public bool HasResults { get; private set; }
 
-    // Riferimenti ai componenti aggiuntivi
     private ArchController archController;
     private StressVisualizer stressVisualizer;
 
@@ -110,7 +127,6 @@ public class BeamController : MonoBehaviour
     {
         if (beamObject == null) return;
         
-        // Aggiorna le dimensioni in base alla struttura attuale
         if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
         {
             archController.UpdateArchDimensions();
@@ -143,7 +159,6 @@ public class BeamController : MonoBehaviour
             Results = results;
             HasResults = true;
 
-            // Render diagrams according to structure type
             if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
             {
                 RenderDiagramForArch(shearLine, results.shearPoints, currentDiagramScale, Color.cyan);
@@ -202,47 +217,25 @@ public class BeamController : MonoBehaviour
     void RenderDiagramForArch(LineRenderer line, float[] values, float scale, Color color)
     {
         if (line == null) return;
-    if (archController == null || !archController.IsActive) return;
-    
-    line.positionCount = values.Length;
-    line.startColor = color;
-    line.endColor = color;
-    
-    // Usa i limiti dell'arco
-    float startX = archController.ArchStartX;
-    float endX = archController.ArchEndX;
-    float length = archController.ArchLength;
-    
-    for (int i = 0; i < values.Length; i++)
-    {
-        float t = (float)i / (values.Length - 1);
-        float x = Mathf.Lerp(startX, endX, t);
+        if (archController == null || !archController.IsActive) return;
         
-        // Altezza sulla curva dell'arco (formula liscia, non segmentata)
-        float yOnArch = archController.GetArchHeightAtX(x);
+        line.positionCount = values.Length;
+        line.startColor = color;
+        line.endColor = color;
         
-        // Ottieni la normale per spostare il diagramma perpendicolarmente all'arco
-        Vector3 normal = archController.GetArchNormalAtX(x);
+        float startX = archController.ArchStartX;
+        float endX = archController.ArchEndX;
         
-        // Posizione base sull'arco
-        Vector3 basePos = new Vector3(x, yOnArch, beamObject.transform.position.z);
-        
-        // Sposta il diagramma lungo la normale
-        Vector3 diagramPos = basePos + normal * values[i] * scale;
-        
-        line.SetPosition(i, diagramPos);
-    }
-    }
-
-    float GetArchY(float x)
-    {
-        if (archController != null && archController.IsActive)
+        for (int i = 0; i < values.Length; i++)
         {
-            return archController.GetArchHeightAtX(x);
+            float t = (float)i / (values.Length - 1);
+            float x = Mathf.Lerp(startX, endX, t);
+            float yOnArch = archController.GetArchHeightAtX(x);
+            Vector3 normal = archController.GetArchNormalAtX(x);
+            Vector3 basePos = new Vector3(x, yOnArch, beamObject.transform.position.z);
+            Vector3 diagramPos = basePos + normal * values[i] * scale;
+            line.SetPosition(i, diagramPos);
         }
-        
-        float t = (x - BeamStartX) / BeamLength;
-        return beamObject.transform.position.y + archHeight * 4 * t * (1 - t);
     }
 
     void ApplyDeflectionToMesh(float[] deflections)
@@ -306,14 +299,6 @@ public class BeamController : MonoBehaviour
         ResetResults();
     }
 
-    void SetupInitialScenario()
-    {
-        UpdateBeamDimensions();
-        SpawnSupport(BeamStartX);
-        SpawnSupport(BeamStartX + BeamLength);
-        SpawnLoad(BeamStartX + (BeamLength / 2f));
-    }
-
     public void AddSupport() => SpawnSupport(GetValidSpawnX());
     public void AddLoad() => SpawnLoad(GetValidSpawnX());
 
@@ -337,32 +322,41 @@ public class BeamController : MonoBehaviour
     {
         if (supportPrefab == null) return;
         
-        // Ottieni la Y corretta in base alla struttura attuale
-        float yPos = beamObject.transform.position.y - 0.6f;
+        float yPos;
+        
         if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
         {
-            yPos = archController.GetArchHeightAtX(worldX) - 0.6f;
+            yPos = archController.GetArchHeightAtX(worldX) + GetCurrentSupportHeightOffset();
+        }
+        else
+        {
+            yPos = beamObject.transform.position.y + GetCurrentSupportHeightOffset();
         }
         
         Vector3 pos = new Vector3(worldX, yPos, beamObject.transform.position.z);
         GameObject inst = Instantiate(supportPrefab, pos, Quaternion.identity);
-        if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
+        if (inst.TryGetComponent(out DraggableLoad drag)) 
+        {
+            drag.beamController = this;
+            drag.UpdateYOffset();
+        }
     }
 
     public void SpawnLoad(float worldX)
     {
         if (loadPrefab == null) return;
         
-        // Ottieni la Y corretta in base alla struttura attuale
-        float yPos = beamObject.transform.position.y + 0.6f;
-        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
-        {
-            yPos = archController.GetArchHeightAtX(worldX) + 0.6f;
-        }
+        float loadOffset = GetCurrentLoadHeightOffset();
+        float yPos = beamObject.transform.position.y + loadOffset;
         
         Vector3 pos = new Vector3(worldX, yPos, beamObject.transform.position.z);
         GameObject inst = Instantiate(loadPrefab, pos, Quaternion.identity);
-        if (inst.TryGetComponent(out DraggableLoad drag)) drag.beamController = this;
+        
+        if (inst.TryGetComponent(out DraggableLoad drag))
+        {
+            drag.beamController = this;
+            drag.UpdateYOffset();
+        }
     }
 
     public void UpdateBeamDimensions()
@@ -428,6 +422,41 @@ public class BeamController : MonoBehaviour
         }
         
         HasResults = false;
+        
+        // Aspetta che la struttura sia inizializzata poi aggiorna gli elementi
+        StartCoroutine(UpdateElementsDelayed());
+    }
+
+    private IEnumerator UpdateElementsDelayed()
+    {
+        yield return new WaitForEndOfFrame();
+        yield return new WaitForEndOfFrame();
+        UpdateAllElementsYPosition();
+    }
+
+    public void UpdateAllElementsYPosition()
+    {
+        var allLoads = GameObject.FindGameObjectsWithTag("Load");
+        var allSupports = GameObject.FindGameObjectsWithTag("Support");
+        
+        foreach (var obj in allLoads)
+        {
+            if (obj != null && obj.TryGetComponent(out DraggableLoad drag))
+            {
+                drag.beamController = this;
+                drag.UpdateYOffset();
+            }
+        }
+        
+        foreach (var obj in allSupports)
+        {
+            if (obj != null && obj.TryGetComponent(out DraggableLoad drag))
+            {
+                drag.beamController = this;
+                drag.ForceArchSupportUpdate();
+                drag.UpdateYOffset();
+            }
+        }
     }
 
     public void ResetToDefaultConfiguration()
@@ -455,8 +484,6 @@ public class BeamController : MonoBehaviour
         SpawnSupport(BeamStartX);
         SpawnSupport(BeamStartX + BeamLength);
         SpawnLoad(BeamStartX + (BeamLength / 2f));
-        
-        Debug.Log($"Configurazione resettata: supporti a {BeamStartX:F2} e {BeamStartX + BeamLength:F2}, carico in mezzeria ({BeamStartX + BeamLength/2f:F2})");
     }
 
     private IEnumerator DelayedConfiguration()
@@ -465,4 +492,82 @@ public class BeamController : MonoBehaviour
         UpdateBeamDimensions();
         ResetToDefaultConfiguration();
     }
+
+    // METODI PER GLI OFFSET
+
+    private StructureHeightOffset GetCurrentStructureOffset()
+    {
+        foreach (var offset in structureHeightOffsets)
+        {
+            if (offset.structureType == currentStructure)
+                return offset;
+        }
+        
+        Debug.LogWarning($"Nessun offset definito per {currentStructure}, uso default");
+        return new StructureHeightOffset 
+        { 
+            structureType = currentStructure, 
+            loadHeightOffset = 0.6f,
+            supportHeightOffset = -0.6f
+        };
+    }
+
+    public float GetCurrentLoadHeightOffset()
+    {
+        return GetCurrentStructureOffset().loadHeightOffset;
+    }
+
+    public float GetCurrentSupportHeightOffset()
+    {
+        return GetCurrentStructureOffset().supportHeightOffset;
+    }
+
+    public void SetLoadHeightOffset(BeamStructureType structureType, float offset)
+    {
+        var existing = structureHeightOffsets.Find(x => x.structureType == structureType);
+        if (existing != null)
+        {
+            existing.loadHeightOffset = offset;
+        }
+        else
+        {
+            structureHeightOffsets.Add(new StructureHeightOffset 
+            { 
+                structureType = structureType, 
+                loadHeightOffset = offset,
+                supportHeightOffset = -0.6f
+            });
+        }
+    }
+
+    public void SetSupportHeightOffset(BeamStructureType structureType, float offset)
+    {
+        var existing = structureHeightOffsets.Find(x => x.structureType == structureType);
+        if (existing != null)
+        {
+            existing.supportHeightOffset = offset;
+        }
+        else
+        {
+            structureHeightOffsets.Add(new StructureHeightOffset 
+            { 
+                structureType = structureType, 
+                loadHeightOffset = 0.6f,
+                supportHeightOffset = offset
+            });
+        }
+    }
+}
+
+[System.Serializable]
+public class StructureHeightOffset
+{
+    [Tooltip("Tipo di struttura a cui applicare questi offset")]
+    public BeamStructureType structureType;
+    
+    [Tooltip("Altezza dei CARICHI sopra beamObject.transform.position.y")]
+    public float loadHeightOffset = 0.6f;
+    
+    [Tooltip("Altezza dei SUPPORTI sopra beamObject.transform.position.y (negativo = sotto)")]
+    public float supportHeightOffset = -0.6f;
 }

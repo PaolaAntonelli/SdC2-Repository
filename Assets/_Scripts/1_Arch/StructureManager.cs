@@ -90,32 +90,34 @@ public class StructureManager : MonoBehaviour
     
     public void SwitchToBeam()
     {
-    if (currentMode == StructureMode.Beam) return;
-    
-    archController?.DeactivateArchMode();
-    beamController.currentStructure = BeamStructureType.Beam;
-    currentMode = StructureMode.Beam;
-    
-    // Forza la configurazione predefinita per la trave
-    beamController.ResetToDefaultConfiguration();
-    
-    Debug.Log("StructureManager: Modalità Trave - Configurazione resettata");
+        if (currentMode == StructureMode.Beam) return;
+        
+        archController?.DeactivateArchMode();
+        
+        // Usa SetStructureType invece di assegnare direttamente
+        beamController.SetStructureType((int)BeamStructureType.Beam);
+        
+        currentMode = StructureMode.Beam;
+        beamController.ResetToDefaultConfiguration();
+        
+        Debug.Log("StructureManager: Modalità Trave");
     }
-    
+
     public void SwitchToArch()
     {
-    if (currentMode == StructureMode.Arch) return;
-    
-    archController?.ActivateArchMode();
-    beamController.currentStructure = BeamStructureType.Arch;
-    currentMode = StructureMode.Arch;
-    
-    // Forza la configurazione predefinita anche per l'arco
-    beamController.ResetToDefaultConfiguration();
-    
-    Debug.Log("StructureManager: Modalità Arco - Configurazione resettata");
+        if (currentMode == StructureMode.Arch) return;
+        
+        archController?.ActivateArchMode();
+        
+        // Usa SetStructureType invece di assegnare direttamente
+        beamController.SetStructureType((int)BeamStructureType.Arch);
+        
+        currentMode = StructureMode.Arch;
+        beamController.ResetToDefaultConfiguration();
+        
+        Debug.Log("StructureManager: Modalità Arco");
     }
-    
+        
     /// <summary>
     /// Ottiene tutti gli elementi (supporti e carichi) nella scena
     /// </summary>
