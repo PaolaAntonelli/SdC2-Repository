@@ -10,7 +10,7 @@ public class DraggableLoad : MonoBehaviour
     
     private bool isDragging = false;
     private Camera mainCamera;
-    private bool isArchSupport = false;
+    private bool isArchStructure = false;
 
     void Awake() => mainCamera = Camera.main;
     
@@ -29,8 +29,7 @@ public class DraggableLoad : MonoBehaviour
     public void ForceArchSupportUpdate()
     {
         if (beamController != null)
-            isArchSupport = (elementType == ElementType.Support && 
-                           beamController.currentStructure == BeamStructureType.Arch);
+            isArchStructure = beamController.currentStructure == BeamStructureType.Arch;
     }
 
     public void UpdateYOffset()
@@ -47,24 +46,36 @@ public class DraggableLoad : MonoBehaviour
         
         if (elementType == ElementType.Load)
         {
-            float offset = beamController.GetCurrentLoadHeightOffset();
-            newY = beamController.beamObject.transform.position.y + offset;
-            Debug.Log($"UpdateYOffset LOAD: {gameObject.name} -> Y={newY} (offset={offset}, structure={beamController.currentStructure})");
-        }
-        else if (elementType == ElementType.Support)
-        {
-            float offset = beamController.GetCurrentSupportHeightOffset();
-            if (isArchSupport)
+            if (isArchStructure)
             {
+                // Carico su arco: segue la curva dell'arco + offset
                 ArchController arch = beamController.GetComponent<ArchController>();
                 if (arch != null)
-                    newY = arch.GetArchHeightAtX(transform.position.x) + offset;
+                {
+                    newY = arch.GetArchHeightAtX(transform.position.x) + 
+                           beamController.GetCurrentLoadHeightOffset();
+                }
             }
             else
             {
-                newY = beamController.beamObject.transform.position.y + offset;
+                // Carico su trave: linea retta sopra la trave
+                newY = beamController.beamObject.transform.position.y + 
+                       beamController.GetCurrentLoadHeightOffset();
             }
-            Debug.Log($"UpdateYOffset SUPPORT: {gameObject.name} -> Y={newY} (offset={offset}, isArch={isArchSupport})");
+        }
+        else if (elementType == ElementType.Support)
+        {
+            if (isArchStructure)
+            {
+                // Supporto su arco: FISSO, non si muove
+                return;
+            }
+            else
+            {
+                // Supporto su trave: linea retta sotto la trave
+                newY = beamController.beamObject.transform.position.y + 
+                       beamController.GetCurrentSupportHeightOffset();
+            }
         }
         
         transform.position = new Vector3(transform.position.x, newY, transform.position.z);
@@ -72,6 +83,9 @@ public class DraggableLoad : MonoBehaviour
 
     void Update()
     {
+        // Solo i supporti su arco NON si possono trascinare
+        if (elementType == ElementType.Support && isArchStructure) return;
+        
         if (Mouse.current.leftButton.wasPressedThisFrame)
         {
             Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
@@ -98,19 +112,35 @@ public class DraggableLoad : MonoBehaviour
         
         if (elementType == ElementType.Load)
         {
-            finalY = beamController.beamObject.transform.position.y + 
-                    beamController.GetCurrentLoadHeightOffset();
-        }
-        else if (elementType == ElementType.Support && isArchSupport)
-        {
-            ArchController arch = beamController.GetComponent<ArchController>();
-            if (arch != null)
-                finalY = arch.GetArchHeightAtX(cX) + beamController.GetCurrentSupportHeightOffset();
+            if (isArchStructure)
+            {
+                // Carico su arco: segue la curva dell'arco
+                ArchController arch = beamController.GetComponent<ArchController>();
+                if (arch != null)
+                {
+                    finalY = arch.GetArchHeightAtX(cX) + beamController.GetCurrentLoadHeightOffset();
+                }
+            }
+            else
+            {
+                // Carico su trave: linea retta orizzontale sopra
+                finalY = beamController.beamObject.transform.position.y + 
+                        beamController.GetCurrentLoadHeightOffset();
+            }
         }
         else if (elementType == ElementType.Support)
         {
-            finalY = beamController.beamObject.transform.position.y + 
-                    beamController.GetCurrentSupportHeightOffset();
+            if (isArchStructure)
+            {
+                // Supporto su arco: FISSO, non si muove
+                return;
+            }
+            else
+            {
+                // Supporto su trave: linea retta orizzontale sotto
+                finalY = beamController.beamObject.transform.position.y + 
+                        beamController.GetCurrentSupportHeightOffset();
+            }
         }
         
         transform.position = new Vector3(cX, finalY, transform.position.z);

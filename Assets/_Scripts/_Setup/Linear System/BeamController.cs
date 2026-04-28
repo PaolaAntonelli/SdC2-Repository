@@ -326,10 +326,12 @@ public class BeamController : MonoBehaviour
         
         if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
         {
+            // Supporto su arco: segue la curva dell'arco
             yPos = archController.GetArchHeightAtX(worldX) + GetCurrentSupportHeightOffset();
         }
         else
         {
+            // Supporto su trave: linea retta sotto la trave
             yPos = beamObject.transform.position.y + GetCurrentSupportHeightOffset();
         }
         
@@ -338,16 +340,28 @@ public class BeamController : MonoBehaviour
         if (inst.TryGetComponent(out DraggableLoad drag)) 
         {
             drag.beamController = this;
-            drag.UpdateYOffset();
+            drag.ForceArchSupportUpdate();
         }
+        
+        Debug.Log($"SpawnSupport: X={worldX}, Y={yPos}, structure={currentStructure}");
     }
 
     public void SpawnLoad(float worldX)
     {
         if (loadPrefab == null) return;
         
-        float loadOffset = GetCurrentLoadHeightOffset();
-        float yPos = beamObject.transform.position.y + loadOffset;
+        float yPos;
+        
+        if (currentStructure == BeamStructureType.Arch && archController != null && archController.IsActive)
+        {
+            // Carico su arco: segue la curva dell'arco + offset
+            yPos = archController.GetArchHeightAtX(worldX) + GetCurrentLoadHeightOffset();
+        }
+        else
+        {
+            // Carico su trave: linea retta sopra la trave
+            yPos = beamObject.transform.position.y + GetCurrentLoadHeightOffset();
+        }
         
         Vector3 pos = new Vector3(worldX, yPos, beamObject.transform.position.z);
         GameObject inst = Instantiate(loadPrefab, pos, Quaternion.identity);
@@ -355,7 +369,7 @@ public class BeamController : MonoBehaviour
         if (inst.TryGetComponent(out DraggableLoad drag))
         {
             drag.beamController = this;
-            drag.UpdateYOffset();
+            drag.ForceArchSupportUpdate();
         }
     }
 
