@@ -4847,8 +4847,8 @@ MonoBehaviour:
   currentStructure: 0
   archHeight: 2
   beamObject: {fileID: 1950817741}
-  supportPrefab: {fileID: 3395224274857230726, guid: cdc5620d32581bb4486b882e96cb6658, type: 3}
-  loadPrefab: {fileID: 1161828979431771920, guid: c5d8e201a32c16340a6e4030237a4dfe, type: 3}
+  supportPrefab: {fileID: 2730274455592985953, guid: c33994a15266dfa41af48a274ff6bda9, type: 3}
+  loadPrefab: {fileID: 1079392212116680849, guid: 8162c782d87e8d04c91b41d4ded2beab, type: 3}
   shearLine: {fileID: 1556682251}
   momentLine: {fileID: 1473096782}
   forceMagnitude: 0.5
@@ -4858,10 +4858,10 @@ MonoBehaviour:
   minDistanceBetweenObjects: 0.2
   structureHeightOffsets:
   - structureType: 0
-    loadHeightOffset: 0.6
+    loadHeightOffset: 1
     supportHeightOffset: -0.6
   - structureType: 1
-    loadHeightOffset: 1
+    loadHeightOffset: 0.1
     supportHeightOffset: -0.6
 --- !u!1 &249732752
 GameObject:
@@ -5719,7 +5719,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &294054149
 RectTransform:
   m_ObjectHideFlags: 0
@@ -13101,7 +13101,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &684483727
 RectTransform:
   m_ObjectHideFlags: 0
@@ -33532,7 +33532,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1654991492
 RectTransform:
   m_ObjectHideFlags: 0
@@ -37045,8 +37045,8 @@ MonoBehaviour:
   currentStructure: 0
   archHeight: 2
   beamObject: {fileID: 919132149422342172}
-  supportPrefab: {fileID: 3395224274857230726, guid: cdc5620d32581bb4486b882e96cb6658, type: 3}
-  loadPrefab: {fileID: 1161828979431771920, guid: c5d8e201a32c16340a6e4030237a4dfe, type: 3}
+  supportPrefab: {fileID: 2730274455592985953, guid: c33994a15266dfa41af48a274ff6bda9, type: 3}
+  loadPrefab: {fileID: 1079392212116680849, guid: 8162c782d87e8d04c91b41d4ded2beab, type: 3}
   shearLine: {fileID: 1032860489}
   momentLine: {fileID: 1448248750}
   forceMagnitude: 0.5
@@ -40785,7 +40785,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2022834755
 RectTransform:
   m_ObjectHideFlags: 0
@@ -41837,7 +41837,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2069992183
 RectTransform:
   m_ObjectHideFlags: 0
@@ -43075,7 +43075,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2118102468
 RectTransform:
   m_ObjectHideFlags: 0
