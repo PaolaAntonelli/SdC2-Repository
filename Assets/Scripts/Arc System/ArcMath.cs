@@ -134,8 +134,7 @@ public static class ArcMath
             Vector3 normalDir = new Vector3(-sinA, cosA, 0);
             result.thrustLine[i] = sectionPoint + normalDir * eccentricity;
             
-            result.deformations[i] = -(result.normalForces[i] / EA * span + result.moments[i] / EI * span * span / 10);
-        }
+        result.deformations[i] = -(result.normalForces[i] / EA * 0.01f + result.moments[i] / EI * 0.001f);        }
         
         return result;
     }
