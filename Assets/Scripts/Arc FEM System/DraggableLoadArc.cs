@@ -62,8 +62,9 @@ public class DraggableLoadArc : MonoBehaviour
 
     float GetArcHeightAtX(float xRelative)
     {
+        // Usa ArcRise invece di riseHeight
         float t = Mathf.Clamp01(xRelative / arcController.ArcSpan);
-        float y = 4f * arcController.riseHeight * t * (1f - t);
+        float y = 4f * arcController.ArcRise * t * (1f - t);
         return arcController.arcObject.transform.position.y + y;
     }
 }

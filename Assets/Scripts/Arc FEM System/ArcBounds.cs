@@ -29,8 +29,9 @@ public class ArcBounds : MonoBehaviour
             
             // Aggiorna l'altezza in base alla geometria dell'arco
             float t = relativeX / arcController.ArcSpan;
+            // Usa ArcRise invece di riseHeight
             float arcY = arcController.arcObject.transform.position.y + 
-                         4f * arcController.riseHeight * t * (1f - t);
+                         4f * arcController.ArcRise * t * (1f - t);
             
             float verticalOffset = CompareTag("Support") ? arcController.supportVerticalOffset : arcController.loadVerticalOffset;
             pos.y = arcY + verticalOffset;
