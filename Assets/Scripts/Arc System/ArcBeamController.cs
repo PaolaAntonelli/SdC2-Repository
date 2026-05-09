@@ -462,6 +462,36 @@ public class ArcBeamController : MonoBehaviour
         
         return normal;
     }
+
+    // Aggiungi questo metodo per visualizzare correttamente i diagrammi lungo l'arco
+    void RenderArcDiagramCorrected(LineRenderer line, float[] values, float scale, Color color, float yOffset)
+    {
+        if (line == null || values == null || values.Length == 0) return;
+        
+        line.startColor = color;
+        line.endColor = color;
+        line.positionCount = values.Length;
+        
+        float zPos = arcObject.transform.position.z;
+        
+        for (int i = 0; i < values.Length; i++)
+        {
+            float t = (float)i / (values.Length - 1);
+            
+            // Trova il punto base sull'arco
+            Vector3 basePoint = InterpolateArcPoint(t);
+            
+            // Calcola la normale all'arco in quel punto
+            Vector3 normal = GetArcNormal(t);
+            
+            // CORREZIONE: I diagrammi vanno disegnati PERPENDICOLARMENTE all'arco
+            // e con il segno corretto (positivo = compressione per sforzo normale)
+            Vector3 diagramPoint = basePoint + normal * (values[i] * scale);
+            diagramPoint.z = zPos;
+            
+            line.SetPosition(i, diagramPoint);
+        }
+    }
     
     // Metodi pubblici per UI
     public void SetAxialScale(float scale) => axialScale = scale;

@@ -20452,7 +20452,7 @@ MonoBehaviour:
   shearYOffset: -3
   momentYOffset: -4
   loadMagnitude: 10000
-  femResolution: 30
+  femResolution: 50
   visualizationPoints: 300
   showAxialForce: 1
   showShear: 1
@@ -23842,7 +23842,7 @@ GameObject:
   - component: {fileID: 1981262215991916180}
   - component: {fileID: 1099324086769325916}
   m_Layer: 0
-  m_Name: Appoggio
+  m_Name: Appoggio_arco
   m_TagString: Support
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -23924,7 +23924,7 @@ GameObject:
   - component: {fileID: 4570130613756647761}
   - component: {fileID: 8972474758924553877}
   m_Layer: 0
-  m_Name: Carico
+  m_Name: Carico_arco
   m_TagString: Load
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

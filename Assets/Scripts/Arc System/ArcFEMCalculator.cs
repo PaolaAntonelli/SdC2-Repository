@@ -12,13 +12,13 @@ public struct ArcBeamData
 
 public static class ArcFEMCalculator
 {
-    // Parametri del materiale CALIBRATI per scala Unity (1 unità ≈ 1 metro)
-    // Per un arco in acciaio di dimensioni realistiche
-    private const float E = 200000f;        // Modulo di Young ridotto per scala (kPa invece di GPa)
-    private const float I = 0.001f;         // Momento d'inerzia per sezione 20cm x 20cm
-    private const float A = 0.04f;          // Area sezione 20cm x 20cm
-    private const float EI = E * I;         // Rigidezza flessionale
-    private const float EA = E * A;         // Rigidezza assiale
+    // Parametri del materiale per un arco in scala Unity (1 unità = 1 metro)
+    // Valori realistici per acciaio strutturale, ma scalati per Unity
+    private const float E = 210f;           // Modulo di Young scalato (GPa → unità Unity)
+    private const float I = 0.000675f;      // Momento d'inerzia per sezione 30cm x 30cm
+    private const float A = 0.09f;          // Area sezione trasversale
+    private const float EI = E * I;
+    private const float EA = E * A;
 
     public static ArcBeamData CalculateArcFEM(
         Vector3[] arcPoints,
@@ -34,7 +34,7 @@ public static class ArcFEMCalculator
         
         double[,] K = new double[totalDof, totalDof];
         double[] F = new double[totalDof];
-        bool[] constrainedDofs = new bool[totalDof];  // Traccia i DOF vincolati
+        bool[] constrainedDofs = new bool[totalDof];
         
         // Calcola lunghezze e angoli degli elementi
         float[] elementLengths = new float[nElements];
@@ -55,7 +55,8 @@ public static class ArcFEMCalculator
             
             double[,] kLocal = GetLocalStiffnessMatrix(L);
             double[,] T = GetTransformationMatrix(angle);
-            double[,] kGlobal = MultiplyMatrices(TransposeMatrix(T), MultiplyMatrices(kLocal, T));
+            double[,] Tt = TransposeMatrix(T);
+            double[,] kGlobal = MultiplyMatrices(MultiplyMatrices(Tt, kLocal), T);
             
             int[] dofs = new int[6];
             for (int j = 0; j < 3; j++)
@@ -105,7 +106,7 @@ public static class ArcFEMCalculator
         }
         
         return CalculateResults(displacements, arcPoints, elementLengths, elementAngles, 
-                              visualizationResolution, constrainedDofs, dofPerNode);
+                              visualizationResolution, dofPerNode);
     }
     
     private static double[,] GetLocalStiffnessMatrix(double L)
@@ -176,6 +177,7 @@ public static class ArcFEMCalculator
     private static void ApplyLoadAtPosition(double[] F, float relPos, 
         float magnitude, Vector3[] arcPoints, int nNodes, int dofPerNode)
     {
+        // Il carico è verticale verso il basso
         float totalLength = CalculateArcLength(arcPoints);
         float targetDist = relPos * totalLength;
         
@@ -186,31 +188,36 @@ public static class ArcFEMCalculator
         for (int i = 0; i < arcPoints.Length - 1; i++)
         {
             float segmentLength = Vector3.Distance(arcPoints[i], arcPoints[i + 1]);
-            if (currentDist + segmentLength >= targetDist)
+            if (currentDist + segmentLength >= targetDist || i == arcPoints.Length - 2)
             {
                 elementIndex = i;
                 localDist = targetDist - currentDist;
+                if (localDist > segmentLength) localDist = segmentLength;
+                if (localDist < 0) localDist = 0;
                 break;
             }
             currentDist += segmentLength;
         }
         
-        // Applica il carico direttamente come forza verticale globale
-        // (assumendo che il carico sia verticale verso il basso)
+        // Applica il carico come forza verticale in coordinate globali
         int node1 = elementIndex;
         int node2 = elementIndex + 1;
         float L = Vector3.Distance(arcPoints[node1], arcPoints[node2]);
         float a = localDist;
         float b = L - a;
         
-        double P = magnitude;  // Positivo verso il basso
+        // CORREZIONE: I carichi sono negativi (verso il basso)
+        double P = -magnitude;
         
-        // Carichi nodali equivalenti per carico concentrato
-        // Questi sono già in coordinate globali perché applichiamo forze verticali
-        F[node1 * dofPerNode + 1] += -P * b * b * (a + 2 * b) / (L * L * L);
-        F[node2 * dofPerNode + 1] += -P * a * a * (b + 2 * a) / (L * L * L);
-        F[node1 * dofPerNode + 2] += -P * a * b * b / (L * L);
-        F[node2 * dofPerNode + 2] += P * a * a * b / (L * L);
+        // Carichi nodali equivalenti per carico concentrato su trave
+        // Formule per le reazioni vincolari equivalenti in coordinate globali
+        F[node1 * dofPerNode + 0] += 0; // Forza orizzontale nulla (carico puramente verticale)
+        F[node1 * dofPerNode + 1] += P * b * b * (L + 2 * a) / (L * L * L);
+        F[node1 * dofPerNode + 2] += P * a * b * b / (L * L);
+        
+        F[node2 * dofPerNode + 0] += 0; // Forza orizzontale nulla
+        F[node2 * dofPerNode + 1] += P * a * a * (L + 2 * b) / (L * L * L);
+        F[node2 * dofPerNode + 2] += -P * a * a * b / (L * L);
     }
     
     private static int[] GetConstrainedDofsAtPosition(float relPos, 
@@ -237,8 +244,8 @@ public static class ArcFEMCalculator
         // Per un appoggio semplice: blocca sia X che Y
         return new int[] 
         { 
-            nodeIndex * dofPerNode + 0,  // Blocca spostamento orizzontale
-            nodeIndex * dofPerNode + 1   // Blocca spostamento verticale
+            nodeIndex * dofPerNode + 0,  // Blocca spostamento orizzontale (u_x)
+            nodeIndex * dofPerNode + 1   // Blocca spostamento verticale (u_y)
         };
     }
     
@@ -266,6 +273,7 @@ public static class ArcFEMCalculator
         // Eliminazione di Gauss con pivoting parziale
         for (int i = 0; i < n; i++)
         {
+            // Pivoting
             int pivot = i;
             double maxVal = System.Math.Abs(A[i, i]);
             
@@ -294,6 +302,7 @@ public static class ArcFEMCalculator
             if (System.Math.Abs(A[i, i]) < 1e-30)
                 continue;
             
+            // Eliminazione
             for (int j = i + 1; j < n; j++)
             {
                 double factor = A[j, i] / A[i, i];
@@ -305,6 +314,7 @@ public static class ArcFEMCalculator
             }
         }
         
+        // Sostituzione all'indietro
         double[] x = new double[n];
         for (int i = n - 1; i >= 0; i--)
         {
@@ -322,8 +332,7 @@ public static class ArcFEMCalculator
     }
     
     private static ArcBeamData CalculateResults(double[] displacements, Vector3[] arcPoints,
-        float[] elementLengths, float[] elementAngles, int resolution, 
-        bool[] constrainedDofs, int dofPerNode)
+        float[] elementLengths, float[] elementAngles, int resolution, int dofPerNode)
     {
         int nNodes = arcPoints.Length;
         
@@ -388,50 +397,42 @@ public static class ArcFEMCalculator
                 uLocal[j] = sum;
             }
             
-            // 1. Variabile normalizzata
-            double t = localDist / L;
-            double t2 = t * t;
-            double t3 = t2 * t;
-
-            // 2. Interpolazione spostamento assiale (lineare)
-            double u_local = uLocal[0] * (1.0 - t) + uLocal[3] * t;
-
-            // 3. Funzioni di forma di Hermite per flessione cubica
-            double N1 = 1.0 - 3.0 * t2 + 2.0 * t3;
-            double N2 = L * (t - 2.0 * t2 + t3);
-            double N3 = 3.0 * t2 - 2.0 * t3;
-            double N4 = L * (-t2 + t3);
-
-            // 4. Interpolazione spostamento trasversale (cubico)
-            double v_local = uLocal[1] * N1 + uLocal[2] * N2 + uLocal[4] * N3 + uLocal[5] * N4;
-
-            // 5. Trasformazione dalle coordinate locali (elemento) a globali (x, y assoluti)
+            // Calcola spostamenti in coordinate globali
             double c = System.Math.Cos(angle);
             double s = System.Math.Sin(angle);
             
+            double t_val = localDist / L;
+            
+            // Spostamento assiale (lineare)
+            double u_local = uLocal[0] * (1.0 - t_val) + uLocal[3] * t_val;
+            
+            // Spostamento trasversale (cubico - Hermite)
+            double v_local = uLocal[1] * (1 - 3*t_val*t_val + 2*t_val*t_val*t_val) 
+                           + uLocal[2] * L * (t_val - 2*t_val*t_val + t_val*t_val*t_val)
+                           + uLocal[4] * (3*t_val*t_val - 2*t_val*t_val*t_val)
+                           + uLocal[5] * L * (-t_val*t_val + t_val*t_val*t_val);
+            
+            // Trasformazione a coordinate globali
             double ux = u_local * c - v_local * s;
             double uy = u_local * s + v_local * c;
             
-            // Calcola forze interne
-            double x = localDist;
-            double L2 = L * L;
-            double L3 = L2 * L;
-            
-            // Sforzo normale
+            // Calcolo sollecitazioni
+            // Sforzo normale (costante nell'elemento)
             double N = EA * (uLocal[3] - uLocal[0]) / L;
             
-            // Taglio (costante nell'elemento per carichi concentrati ai nodi)
-            double V = -EI * (
-                12 * uLocal[1] / L3 + 6 * uLocal[2] / L2 
-                - 12 * uLocal[4] / L3 + 6 * uLocal[5] / L2
+            // Taglio (costante nell'elemento)
+            double V = EI * (
+                12 * (uLocal[1] - uLocal[4]) / (L * L * L) + 
+                6 * (uLocal[2] + uLocal[5]) / (L * L)
             );
             
-            // Momento (varia linearmente)
+            // Momento (varia linearmente lungo l'elemento)
+            double x = localDist;
             double M = EI * (
-                (6 / L2 - 12 * x / L3) * uLocal[1] 
-                + (4 / L - 6 * x / L2) * uLocal[2]
-                + (-6 / L2 + 12 * x / L3) * uLocal[4]
-                + (2 / L - 6 * x / L2) * uLocal[5]
+                uLocal[1] * (-6 + 12*x/L) / (L * L) +
+                uLocal[2] * (-4 + 6*x/L) / L +
+                uLocal[4] * (6 - 12*x/L) / (L * L) +
+                uLocal[5] * (-2 + 6*x/L) / L
             );
             
             results.horizontalDeflection[i] = (float)ux;
