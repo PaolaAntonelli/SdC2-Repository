@@ -136,8 +136,8 @@ public class ArcBeamController : MonoBehaviour
             );
             
             if (showAxialForce && axialForceLine != null)
-                RenderArcDiagram(axialForceLine, results.axialForcePoints, axialScale, 
-                               Color.red, axialForceYOffset);
+            RenderArcDiagramCorrected(axialForceLine, results.axialForcePoints, axialScale, 
+                   Color.red, axialForceYOffset);
             
             if (showShear && shearLine != null)
                 RenderArcDiagram(shearLine, results.shearPoints, shearScale, 

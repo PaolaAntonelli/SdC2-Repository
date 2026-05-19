@@ -21,92 +21,92 @@ public static class ArcFEMCalculator
     private const float EA = E * A;
 
     public static ArcBeamData CalculateArcFEM(
-        Vector3[] arcPoints,
-        List<float> loadPositions,
-        List<float> loadMagnitudes,
-        List<float> supportPositions,
-        int visualizationResolution)
+    Vector3[] arcPoints,
+    List<float> loadPositions,
+    List<float> loadMagnitudes,
+    List<float> supportPositions,
+    int visualizationResolution)
     {
-        int nNodes = arcPoints.Length;
-        int nElements = nNodes - 1;
-        int dofPerNode = 3;  // u_x, u_y, θ_z
-        int totalDof = nNodes * dofPerNode;
+    int nNodes = arcPoints.Length;
+    int nElements = nNodes - 1;
+    int dofPerNode = 3;  // u_x, u_y, θ_z
+    int totalDof = nNodes * dofPerNode;
+    
+    double[,] K = new double[totalDof, totalDof];
+    double[] F = new double[totalDof];
+    bool[] constrainedDofs = new bool[totalDof];
+    
+    // Calcola lunghezze e angoli degli elementi
+    float[] elementLengths = new float[nElements];
+    float[] elementAngles = new float[nElements];
+    
+    for (int i = 0; i < nElements; i++)
+    {
+        Vector3 delta = arcPoints[i + 1] - arcPoints[i];
+        elementLengths[i] = delta.magnitude;
+        elementAngles[i] = Mathf.Atan2(delta.y, delta.x);
+    }
+    
+    // Assemblaggio matrice di rigidezza globale
+    for (int e = 0; e < nElements; e++)
+    {
+        double L = elementLengths[e];
+        double angle = elementAngles[e];
         
-        double[,] K = new double[totalDof, totalDof];
-        double[] F = new double[totalDof];
-        bool[] constrainedDofs = new bool[totalDof];
+        double[,] kLocal = GetLocalStiffnessMatrix(L);
+        double[,] T = GetTransformationMatrix(angle);
+        double[,] Tt = TransposeMatrix(T);
+        double[,] kGlobal = MultiplyMatrices(MultiplyMatrices(Tt, kLocal), T);
         
-        // Calcola lunghezze e angoli degli elementi
-        float[] elementLengths = new float[nElements];
-        float[] elementAngles = new float[nElements];
-        
-        for (int i = 0; i < nElements; i++)
+        int[] dofs = new int[6];
+        for (int j = 0; j < 3; j++)
         {
-            Vector3 delta = arcPoints[i + 1] - arcPoints[i];
-            elementLengths[i] = delta.magnitude;
-            elementAngles[i] = Mathf.Atan2(delta.y, delta.x);
+            dofs[j] = e * dofPerNode + j;
+            dofs[j + 3] = (e + 1) * dofPerNode + j;
         }
         
-        // Assemblaggio matrice di rigidezza globale
-        for (int e = 0; e < nElements; e++)
+        for (int i = 0; i < 6; i++)
         {
-            double L = elementLengths[e];
-            double angle = elementAngles[e];
-            
-            double[,] kLocal = GetLocalStiffnessMatrix(L);
-            double[,] T = GetTransformationMatrix(angle);
-            double[,] Tt = TransposeMatrix(T);
-            double[,] kGlobal = MultiplyMatrices(MultiplyMatrices(Tt, kLocal), T);
-            
-            int[] dofs = new int[6];
-            for (int j = 0; j < 3; j++)
+            for (int j = 0; j < 6; j++)
             {
-                dofs[j] = e * dofPerNode + j;
-                dofs[j + 3] = (e + 1) * dofPerNode + j;
-            }
-            
-            for (int i = 0; i < 6; i++)
-            {
-                for (int j = 0; j < 6; j++)
-                {
-                    K[dofs[i], dofs[j]] += kGlobal[i, j];
-                }
-            }
-        }
-        
-        // Applica carichi (forze concentrate)
-        for (int i = 0; i < loadPositions.Count; i++)
-        {
-            float relPos = Mathf.Clamp01(loadPositions[i]);
-            ApplyLoadAtPosition(F, relPos, loadMagnitudes[i], arcPoints, nNodes, dofPerNode);
-        }
-        
-        // Applica vincoli (appoggi) - metodo di penalizzazione
-        double penalty = 1e25;
-        foreach (float supportPos in supportPositions)
-        {
-            float relPos = Mathf.Clamp01(supportPos);
-            int[] constrainedDofIndices = GetConstrainedDofsAtPosition(relPos, arcPoints, nNodes, dofPerNode);
-            
-            foreach (int dof in constrainedDofIndices)
-            {
-                K[dof, dof] += penalty;
-                constrainedDofs[dof] = true;
+                K[dofs[i], dofs[j]] += kGlobal[i, j];
             }
         }
+    }
+    
+    // Applica carichi (forze concentrate) usando la mappatura X reale
+    for (int i = 0; i < loadPositions.Count; i++)
+    {
+        float relPos = Mathf.Clamp01(loadPositions[i]);
+        ApplyLoadAtPosition(F, relPos, loadMagnitudes[i], arcPoints, dofPerNode);
+    }
+    
+    // CORREZIONE 1: Penalizzazione scalata a 1e10 per evitare instabilità numerica
+    double penalty = 1e10; 
+    foreach (float supportPos in supportPositions)
+    {
+        float relPos = Mathf.Clamp01(supportPos);
+        int[] constrainedDofIndices = GetConstrainedDofsAtPosition(relPos, arcPoints, dofPerNode);
         
-        // Risolvi il sistema
-        double[] displacements = SolveSystem(K, F);
-        
-        // Azzera gli spostamenti vincolati (per pulizia numerica)
-        for (int i = 0; i < totalDof; i++)
+        foreach (int dof in constrainedDofIndices)
         {
-            if (constrainedDofs[i])
-                displacements[i] = 0;
+            K[dof, dof] += penalty;
+            constrainedDofs[dof] = true;
         }
-        
-        return CalculateResults(displacements, arcPoints, elementLengths, elementAngles, 
-                              visualizationResolution, dofPerNode);
+    }
+    
+    // Risolvi il sistema
+    double[] displacements = SolveSystem(K, F);
+    
+    // Azzera gli spostamenti vincolati
+    for (int i = 0; i < totalDof; i++)
+    {
+        if (constrainedDofs[i])
+            displacements[i] = 0;
+    }
+    
+    return CalculateResults(displacements, arcPoints, elementLengths, elementAngles, 
+                          visualizationResolution, dofPerNode);
     }
     
     private static double[,] GetLocalStiffnessMatrix(double L)
@@ -174,78 +174,104 @@ public static class ArcFEMCalculator
         return result;
     }
     
+    // CORREZIONE 2 & 3: Ricerca dell'elemento tramite coordinata X e proiezione locale del carico
     private static void ApplyLoadAtPosition(double[] F, float relPos, 
-        float magnitude, Vector3[] arcPoints, int nNodes, int dofPerNode)
+        float magnitude, Vector3[] arcPoints, int dofPerNode)
     {
-        // Il carico è verticale verso il basso
-        float totalLength = CalculateArcLength(arcPoints);
-        float targetDist = relPos * totalLength;
+        float minX = arcPoints[0].x;
+        float maxX = arcPoints[arcPoints.Length - 1].x;
+        float targetX = Mathf.Lerp(minX, maxX, relPos);
         
-        float currentDist = 0;
+        // Trova l'elemento corretto basandosi sulla X reale del cursore/carico
         int elementIndex = 0;
-        float localDist = 0;
-        
         for (int i = 0; i < arcPoints.Length - 1; i++)
         {
-            float segmentLength = Vector3.Distance(arcPoints[i], arcPoints[i + 1]);
-            if (currentDist + segmentLength >= targetDist || i == arcPoints.Length - 2)
+            if (targetX >= arcPoints[i].x && targetX <= arcPoints[i + 1].x)
             {
                 elementIndex = i;
-                localDist = targetDist - currentDist;
-                if (localDist > segmentLength) localDist = segmentLength;
-                if (localDist < 0) localDist = 0;
                 break;
             }
-            currentDist += segmentLength;
         }
         
-        // Applica il carico come forza verticale in coordinate globali
         int node1 = elementIndex;
         int node2 = elementIndex + 1;
-        float L = Vector3.Distance(arcPoints[node1], arcPoints[node2]);
-        float a = localDist;
-        float b = L - a;
         
-        // CORREZIONE: I carichi sono negativi (verso il basso)
-        double P = -magnitude;
+        double L = Vector3.Distance(arcPoints[node1], arcPoints[node2]);
+        double angle = Mathf.Atan2(arcPoints[node2].y - arcPoints[node1].y, arcPoints[node2].x - arcPoints[node1].x);
         
-        // Carichi nodali equivalenti per carico concentrato su trave
-        // Formule per le reazioni vincolari equivalenti in coordinate globali
-        F[node1 * dofPerNode + 0] += 0; // Forza orizzontale nulla (carico puramente verticale)
-        F[node1 * dofPerNode + 1] += P * b * b * (L + 2 * a) / (L * L * L);
-        F[node1 * dofPerNode + 2] += P * a * b * b / (L * L);
+        // Calcola la distanza locale del carico dal primo nodo dell'elemento
+        float t_x = (targetX - arcPoints[node1].x) / (arcPoints[node2].x - arcPoints[node1].x);
+        double a = Mathf.Clamp01(t_x) * L;
+        double b = L - a;
         
-        F[node2 * dofPerNode + 0] += 0; // Forza orizzontale nulla
-        F[node2 * dofPerNode + 1] += P * a * a * (L + 2 * b) / (L * L * L);
-        F[node2 * dofPerNode + 2] += -P * a * a * b / (L * L);
+        double P_global_y = -magnitude; // Forza verticale verso il basso
+        
+        // Ruota il carico globale nel sistema di riferimento LOCALE dell'elemento inclinato
+        double cosA = System.Math.Cos(angle);
+        double sinA = System.Math.Sin(angle);
+        
+        double P_local_x = P_global_y * sinA; // Componente assiale locale
+        double P_local_y = P_global_y * cosA; // Componente trasversale locale
+        
+        // Calcola le azioni d'incastro perfetto nel sistema locale
+        double[] fLocal = new double[6];
+        
+        // Componente Assiale (ripartizione lineare)
+        fLocal[0] = P_local_x * (b / L);
+        fLocal[3] = P_local_x * (a / L);
+        
+        // Componente Trasversale (Formule di Hermite standard)
+        fLocal[1] = P_local_y * (b * b * (L + 2 * a)) / (L * L * L);
+        fLocal[2] = P_local_y * (a * b * b) / (L * L);
+        fLocal[4] = P_local_y * (a * a * (L + 2 * b)) / (L * L * L);
+        fLocal[5] = -P_local_y * (a * a * b) / (L * L);
+        
+        // Ruota le forze locali in coordinate GLOBALI (F_global = T^T * f_local)
+        double[,] T = GetTransformationMatrix(angle);
+        double[] fGlobal = new double[6];
+        for (int i = 0; i < 6; i++)
+        {
+            double sum = 0;
+            for (int k = 0; k < 6; k++)
+                sum += T[k, i] * fLocal[k]; // Nota l'uso di T trasposta (T[k,i])
+            fGlobal[i] = sum;
+        }
+        
+        // Applica al vettore globale delle forze
+        F[node1 * dofPerNode + 0] += fGlobal[0];
+        F[node1 * dofPerNode + 1] += fGlobal[1];
+        F[node1 * dofPerNode + 2] += fGlobal[2];
+        
+        F[node2 * dofPerNode + 0] += fGlobal[3];
+        F[node2 * dofPerNode + 1] += fGlobal[4];
+        F[node2 * dofPerNode + 2] += fGlobal[5];
     }
     
+    // CORREZIONE 3b: Trova il nodo di vincolo più vicino basandosi sulla X reale
     private static int[] GetConstrainedDofsAtPosition(float relPos, 
-        Vector3[] arcPoints, int nNodes, int dofPerNode)
+        Vector3[] arcPoints, int dofPerNode)
     {
-        float totalLength = CalculateArcLength(arcPoints);
-        float targetDist = relPos * totalLength;
+        float minX = arcPoints[0].x;
+        float maxX = arcPoints[arcPoints.Length - 1].x;
+        float targetX = Mathf.Lerp(minX, maxX, relPos);
         
-        float currentDist = 0;
         int nodeIndex = 0;
+        float minDelta = float.MaxValue;
         
         for (int i = 0; i < arcPoints.Length; i++)
         {
-            if (i > 0)
-                currentDist += Vector3.Distance(arcPoints[i-1], arcPoints[i]);
-            
-            if (currentDist >= targetDist || i == arcPoints.Length - 1)
+            float delta = Mathf.Abs(arcPoints[i].x - targetX);
+            if (delta < minDelta)
             {
-                nodeIndex = Mathf.Clamp(i, 0, nNodes - 1);
-                break;
+                minDelta = delta;
+                nodeIndex = i;
             }
         }
         
-        // Per un appoggio semplice: blocca sia X che Y
         return new int[] 
         { 
-            nodeIndex * dofPerNode + 0,  // Blocca spostamento orizzontale (u_x)
-            nodeIndex * dofPerNode + 1   // Blocca spostamento verticale (u_y)
+            nodeIndex * dofPerNode + 0,  // u_x
+            nodeIndex * dofPerNode + 1   // u_y
         };
     }
     
