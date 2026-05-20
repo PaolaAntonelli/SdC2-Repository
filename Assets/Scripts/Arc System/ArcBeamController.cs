@@ -12,16 +12,17 @@ public class ArcBeamController : MonoBehaviour
     public LineRenderer momentLine;
     public LineRenderer deformedShapeLine;
     
-    // I diagrammi sono auto-normalizzati: il valore massimo occupa sempre diagramHeightFraction
-    // della freccia dell'arco. axialScale/shearScale/momentScale sono moltiplicatori relativi (1.0 = default).
-    [Header("Scala Diagrammi (moltiplicatore su auto-normalizzazione)")]
+    // Scala fissa: il riferimento è loadMagnitude (N). Un carico pari a loadMagnitude
+    // visualizza un'altezza pari a diagramHeightFraction × freccia dell'arco.
+    // axialScale/shearScale sono moltiplicatori supplementari (default 1).
+    [Header("Scala Diagrammi (moltiplicatore su riferimento fisso = loadMagnitude)")]
     [Range(0.1f, 5f)] public float axialScale = 1f;
     [Range(0.1f, 5f)] public float shearScale = 1f;
     [Range(0.1f, 5f)] public float momentScale = 1f;
-    // Fattore di ingrandimento della deformata (adimensionale, su spostamenti fisici in m)
-    [Range(10f, 1000000f)] public float deflectionScale = 100000f;
+    // Esagerazione deformata: 1 = max spostamento → 15% della freccia (visibile ma non enorme)
+    [Range(0.1f, 10f)] public float deflectionScale = 1f;
 
-    [Header("Proporzione max diagramma / freccia arco")]
+    [Header("Proporzione max diagramma / freccia arco (riferimento = loadMagnitude)")]
     [Range(0.05f, 1f)] public float diagramHeightFraction = 0.35f;
 
     [Header("Offset Perpendicolare Diagrammi (lungo normale, Unity units)")]
@@ -140,38 +141,41 @@ public class ArcBeamController : MonoBehaviour
                 visualizationPoints
             );
 
-            // Altezza massima di ogni diagramma = fraction × freccia dell'arco
-            float arcRise = GetMaxArcY() - Mathf.Min(arcPoints[0].y, arcPoints[arcPoints.Length - 1].y);
-            float baseHeight = Mathf.Max(arcRise * diagramHeightFraction, 0.01f);
+            // Scala fissa: baseHeight / fRef converte N → Unity units.
+            // Non cambia al variare dei valori calcolati → il diagramma si modifica visibilmente
+            // quando il carico si sposta (cambiano N, V, M ma la scala resta costante).
+            float feetY = Mathf.Min(arcPoints[0].y, arcPoints[arcPoints.Length - 1].y);
+            float arcRise = Mathf.Max(GetMaxArcY() - feetY, 0.01f);
+            float arcSpan = Mathf.Max(arcPoints[arcPoints.Length - 1].x - arcPoints[0].x, 0.01f);
+            float baseHeight = arcRise * diagramHeightFraction;
+            float fRef = Mathf.Max(loadMagnitude, 1f);            // riferimento forza [N]
+            float mRef = fRef * arcSpan;                           // riferimento momento [N·m]
 
             if (showAxialForce && axialForceLine != null)
                 RenderArcDiagram(axialForceLine, results.axialForcePoints,
-                               GetAutoScale(results.axialForcePoints, baseHeight) * axialScale,
-                               Color.red, axialForceYOffset);
+                               (baseHeight / fRef) * axialScale, Color.red, axialForceYOffset);
 
             if (showShear && shearLine != null)
                 RenderArcDiagram(shearLine, results.shearPoints,
-                               GetAutoScale(results.shearPoints, baseHeight) * shearScale,
-                               Color.cyan, shearYOffset);
+                               (baseHeight / fRef) * shearScale, Color.cyan, shearYOffset);
 
             if (showMoment && momentLine != null)
                 RenderArcDiagram(momentLine, results.momentPoints,
-                               GetAutoScale(results.momentPoints, baseHeight) * momentScale,
-                               Color.magenta, momentYOffset);
+                               (baseHeight / mRef) * momentScale, Color.magenta, momentYOffset);
 
             if (showDeformedShape && deformedShapeLine != null)
             {
-                // Auto-scala anche la deformata: max spostamento → 20% della freccia
                 float maxDisp = 0f;
                 for (int i = 0; i < results.verticalDeflection.Length; i++)
                 {
                     maxDisp = Mathf.Max(maxDisp, Mathf.Abs(results.verticalDeflection[i]));
                     maxDisp = Mathf.Max(maxDisp, Mathf.Abs(results.horizontalDeflection[i]));
                 }
-                float autoDeflScale = maxDisp > 1e-12f
-                    ? (arcRise * 0.2f / maxDisp) * deflectionScale
-                    : deflectionScale;
-                RenderDeformedShape(deformedShapeLine, results, autoDeflScale);
+                // deflectionScale è un moltiplicatore puro (1 = max spost. → 15% freccia)
+                float deformScale = maxDisp > 1e-12f
+                    ? (arcRise * 0.15f / maxDisp) * deflectionScale
+                    : 1f;
+                RenderDeformedShape(deformedShapeLine, results, deformScale);
             }
         }
     }
@@ -239,73 +243,71 @@ public class ArcBeamController : MonoBehaviour
     void SampleArcPointsFromMesh()
     {
         if (meshFilter == null || meshFilter.sharedMesh == null) return;
-        
+
         Vector3[] vertices = meshFilter.sharedMesh.vertices;
         if (vertices.Length == 0) return;
-        
-        // Trova i limiti della mesh in coordinate mondo
-        float minX = float.MaxValue;
-        float maxX = float.MinValue;
-        float minY = float.MaxValue;
-        float maxY = float.MinValue;
-        
+
+        // Limiti AABB in world space
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
         foreach (Vector3 v in vertices)
         {
-            Vector3 worldV = arcObject.transform.TransformPoint(v);
-            if (worldV.x < minX) minX = worldV.x;
-            if (worldV.x > maxX) maxX = worldV.x;
-            if (worldV.y < minY) minY = worldV.y;
-            if (worldV.y > maxY) maxY = worldV.y;
+            Vector3 w = arcObject.transform.TransformPoint(v);
+            if (w.x < minX) minX = w.x;
+            if (w.x > maxX) maxX = w.x;
+            if (w.y < minY) minY = w.y;
+            if (w.y > maxY) maxY = w.y;
         }
-        
-        // Campiona punti lungo l'asse X per creare la linea media dell'arco
-        arcPoints = new Vector3[femResolution];
-        
-        for (int i = 0; i < femResolution; i++)
+
+        // Passo 1: campionamento denso (10× la risoluzione) a X uniforme → linea media grezza
+        int denseN = femResolution * 10;
+        var densePts = new System.Collections.Generic.List<Vector3>();
+        float midY_global = (minY + maxY) / 2f;
+        float bandW = (maxX - minX) / denseN * 2f;
+
+        for (int i = 0; i < denseN; i++)
         {
-            float t = (float)i / (femResolution - 1);
-            float x = Mathf.Lerp(minX, maxX, t);
-            
-            // Trova tutti i vertici nella fascia corrente
-            float bandWidth = (maxX - minX) / femResolution * 1.5f;
-            float sumY_top = 0;
-            float sumY_bottom = 0;
-            int count_top = 0;
-            int count_bottom = 0;
-            float midY = (minY + maxY) / 2f;
-            
+            float x = Mathf.Lerp(minX, maxX, (float)i / (denseN - 1));
+            float sumTop = 0, sumBot = 0;
+            int cTop = 0, cBot = 0;
             foreach (Vector3 v in vertices)
             {
-                Vector3 worldV = arcObject.transform.TransformPoint(v);
-                if (Mathf.Abs(worldV.x - x) < bandWidth)
+                Vector3 w = arcObject.transform.TransformPoint(v);
+                if (Mathf.Abs(w.x - x) < bandW)
                 {
-                    if (worldV.y > midY)
-                    {
-                        sumY_top += worldV.y;
-                        count_top++;
-                    }
-                    else
-                    {
-                        sumY_bottom += worldV.y;
-                        count_bottom++;
-                    }
+                    if (w.y >= midY_global) { sumTop += w.y; cTop++; }
+                    else                    { sumBot += w.y; cBot++; }
                 }
             }
-            
-            // Usa il punto medio tra superiore e inferiore
-            float y_top = count_top > 0 ? sumY_top / count_top : maxY;
-            float y_bottom = count_bottom > 0 ? sumY_bottom / count_bottom : minY;
-            float y = (y_top + y_bottom) / 2f;
-            
-            // Per il primo e ultimo punto, prendi il valore più basso (base dell'arco)
-            if (i == 0 || i == femResolution - 1)
-                y = Mathf.Min(y_top, y_bottom);
-            
-            arcPoints[i] = new Vector3(x, y, arcObject.transform.position.z);
+            float yTop = cTop > 0 ? sumTop / cTop : maxY;
+            float yBot = cBot > 0 ? sumBot / cBot : minY;
+            float y = (i == 0 || i == denseN - 1) ? Mathf.Min(yTop, yBot) : (yTop + yBot) / 2f;
+            densePts.Add(new Vector3(x, y, arcObject.transform.position.z));
         }
-        
-        Debug.Log($"<color=green>Arco campionato: {femResolution} punti, " +
-                  $"X:[{minX:F2} - {maxX:F2}], Y:[{minY:F2} - {maxY:F2}]</color>");
+
+        // Passo 2: calcola la lunghezza d'arco cumulativa della curva densa
+        float[] cumLen = new float[densePts.Count];
+        cumLen[0] = 0f;
+        for (int i = 1; i < densePts.Count; i++)
+            cumLen[i] = cumLen[i - 1] + Vector3.Distance(densePts[i - 1], densePts[i]);
+        float totalArc = cumLen[densePts.Count - 1];
+
+        // Passo 3: ri-campiona a lunghezza d'arco UNIFORME → elementi FEM quasi uguali
+        arcPoints = new Vector3[femResolution];
+        arcPoints[0] = densePts[0];
+        arcPoints[femResolution - 1] = densePts[densePts.Count - 1];
+        int di = 0;
+        for (int i = 1; i < femResolution - 1; i++)
+        {
+            float target = totalArc * i / (femResolution - 1);
+            while (di < densePts.Count - 2 && cumLen[di + 1] < target) di++;
+            float segLen = cumLen[di + 1] - cumLen[di];
+            float lt = segLen > 1e-8f ? (target - cumLen[di]) / segLen : 0f;
+            arcPoints[i] = Vector3.Lerp(densePts[di], densePts[di + 1], lt);
+        }
+
+        Debug.Log($"<color=green>Arco campionato (arc-length uniforme): {femResolution} nodi, " +
+                  $"lunghezza arco={totalArc:F3} m, L_elem≈{totalArc/(femResolution-1)*1000:F1} mm</color>");
     }
     
     float GetMaxArcY()
@@ -435,14 +437,6 @@ public class ArcBeamController : MonoBehaviour
         return positions;
     }
     
-    // Restituisce il fattore di scala che porta il valore massimo a targetSize Unity units
-    float GetAutoScale(float[] values, float targetSize)
-    {
-        float maxAbs = 0f;
-        foreach (float v in values) maxAbs = Mathf.Max(maxAbs, Mathf.Abs(v));
-        return maxAbs > 1e-10f ? targetSize / maxAbs : 1f;
-    }
-
     void RenderArcDiagram(LineRenderer line, float[] values, float scale, Color color, float yOffset)
     {
         if (line == null || values == null || values.Length == 0) return;
