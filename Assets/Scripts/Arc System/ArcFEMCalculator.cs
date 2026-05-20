@@ -12,13 +12,12 @@ public struct ArcBeamData
 
 public static class ArcFEMCalculator
 {
-    // Parametri del materiale per un arco in scala Unity (1 unità = 1 metro)
-    // Valori realistici per acciaio strutturale, ma scalati per Unity
-    private const float E = 210f;           // Modulo di Young scalato (GPa → unità Unity)
-    private const float I = 0.000675f;      // Momento d'inerzia per sezione 30cm x 30cm
-    private const float A = 0.09f;          // Area sezione trasversale
-    private const float EI = E * I;
-    private const float EA = E * A;
+    // Parametri materiale in unità SI coerenti: Pa (N/m²), m, N
+    private const float E = 210e9f;         // Modulo di Young acciaio: 210 GPa = 210e9 Pa
+    private const float I = 0.000675f;      // Momento d'inerzia sezione 30x30 cm (m⁴)
+    private const float A = 0.09f;          // Area sezione trasversale (m²)
+    private const float EI = E * I;         // EI = 141 750 000 N·m²
+    private const float EA = E * A;         // EA = 18 900 000 000 N
 
     public static ArcBeamData CalculateArcFEM(
     Vector3[] arcPoints,
@@ -81,16 +80,22 @@ public static class ArcFEMCalculator
         ApplyLoadAtPosition(F, relPos, loadMagnitudes[i], arcPoints, dofPerNode);
     }
     
-    // CORREZIONE 1: Penalizzazione scalata a 1e10 per evitare instabilità numerica
-    double penalty = 1e10; 
+    // Eliminazione diretta: azzera riga e colonna del DOF vincolato, impone u=0 esattamente.
+    // Più robusto del metodo di penalizzazione, che fallisce quando penalty ≤ K_diagonale.
     foreach (float supportPos in supportPositions)
     {
         float relPos = Mathf.Clamp01(supportPos);
         int[] constrainedDofIndices = GetConstrainedDofsAtPosition(relPos, arcPoints, dofPerNode);
-        
+
         foreach (int dof in constrainedDofIndices)
         {
-            K[dof, dof] += penalty;
+            for (int j = 0; j < totalDof; j++)
+            {
+                K[dof, j] = 0.0;
+                K[j, dof] = 0.0;
+            }
+            K[dof, dof] = 1.0;
+            F[dof] = 0.0;
             constrainedDofs[dof] = true;
         }
     }

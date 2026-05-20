@@ -12,16 +12,22 @@ public class ArcBeamController : MonoBehaviour
     public LineRenderer momentLine;
     public LineRenderer deformedShapeLine;
     
-    [Header("Parametri Visualizzazione Diagrammi")]
-    public float axialScale = 0.00001f;
-    public float shearScale = 0.0001f;
-    public float momentScale = 0.0001f;
-    public float deflectionScale = 0.05f;      // Il tuo valore ottimale
-    
-    [Header("Offset Verticali Diagrammi")]
-    public float axialForceYOffset = -2f;
-    public float shearYOffset = -3f;
-    public float momentYOffset = -4f;
+    // I diagrammi sono auto-normalizzati: il valore massimo occupa sempre diagramHeightFraction
+    // della freccia dell'arco. axialScale/shearScale/momentScale sono moltiplicatori relativi (1.0 = default).
+    [Header("Scala Diagrammi (moltiplicatore su auto-normalizzazione)")]
+    [Range(0.1f, 5f)] public float axialScale = 1f;
+    [Range(0.1f, 5f)] public float shearScale = 1f;
+    [Range(0.1f, 5f)] public float momentScale = 1f;
+    // Fattore di ingrandimento della deformata (adimensionale, su spostamenti fisici in m)
+    [Range(10f, 1000000f)] public float deflectionScale = 100000f;
+
+    [Header("Proporzione max diagramma / freccia arco")]
+    [Range(0.05f, 1f)] public float diagramHeightFraction = 0.35f;
+
+    [Header("Offset Perpendicolare Diagrammi (lungo normale, Unity units)")]
+    public float axialForceYOffset = 0f;
+    public float shearYOffset = 0f;
+    public float momentYOffset = 0f;
     
     [Header("Carichi")]
     public float loadMagnitude = 10000f;
@@ -126,29 +132,47 @@ public class ArcBeamController : MonoBehaviour
         
         if (supportPositions.Count >= 2)
         {
-            // Usa la risoluzione FEM per il calcolo
             ArcBeamData results = ArcFEMCalculator.CalculateArcFEM(
                 arcPoints,
                 loadPositions,
                 loadMags,
                 supportPositions,
-                visualizationPoints   // Alta risoluzione per la visualizzazione
+                visualizationPoints
             );
-            
+
+            // Altezza massima di ogni diagramma = fraction × freccia dell'arco
+            float arcRise = GetMaxArcY() - Mathf.Min(arcPoints[0].y, arcPoints[arcPoints.Length - 1].y);
+            float baseHeight = Mathf.Max(arcRise * diagramHeightFraction, 0.01f);
+
             if (showAxialForce && axialForceLine != null)
-            RenderArcDiagramCorrected(axialForceLine, results.axialForcePoints, axialScale, 
-                   Color.red, axialForceYOffset);
-            
+                RenderArcDiagram(axialForceLine, results.axialForcePoints,
+                               GetAutoScale(results.axialForcePoints, baseHeight) * axialScale,
+                               Color.red, axialForceYOffset);
+
             if (showShear && shearLine != null)
-                RenderArcDiagram(shearLine, results.shearPoints, shearScale, 
+                RenderArcDiagram(shearLine, results.shearPoints,
+                               GetAutoScale(results.shearPoints, baseHeight) * shearScale,
                                Color.cyan, shearYOffset);
-            
+
             if (showMoment && momentLine != null)
-                RenderArcDiagram(momentLine, results.momentPoints, momentScale, 
+                RenderArcDiagram(momentLine, results.momentPoints,
+                               GetAutoScale(results.momentPoints, baseHeight) * momentScale,
                                Color.magenta, momentYOffset);
-            
+
             if (showDeformedShape && deformedShapeLine != null)
-                RenderDeformedShape(deformedShapeLine, results, deflectionScale);
+            {
+                // Auto-scala anche la deformata: max spostamento → 20% della freccia
+                float maxDisp = 0f;
+                for (int i = 0; i < results.verticalDeflection.Length; i++)
+                {
+                    maxDisp = Mathf.Max(maxDisp, Mathf.Abs(results.verticalDeflection[i]));
+                    maxDisp = Mathf.Max(maxDisp, Mathf.Abs(results.horizontalDeflection[i]));
+                }
+                float autoDeflScale = maxDisp > 1e-12f
+                    ? (arcRise * 0.2f / maxDisp) * deflectionScale
+                    : deflectionScale;
+                RenderDeformedShape(deformedShapeLine, results, autoDeflScale);
+            }
         }
     }
     
@@ -411,6 +435,14 @@ public class ArcBeamController : MonoBehaviour
         return positions;
     }
     
+    // Restituisce il fattore di scala che porta il valore massimo a targetSize Unity units
+    float GetAutoScale(float[] values, float targetSize)
+    {
+        float maxAbs = 0f;
+        foreach (float v in values) maxAbs = Mathf.Max(maxAbs, Mathf.Abs(v));
+        return maxAbs > 1e-10f ? targetSize / maxAbs : 1f;
+    }
+
     void RenderArcDiagram(LineRenderer line, float[] values, float scale, Color color, float yOffset)
     {
         if (line == null || values == null || values.Length == 0) return;
@@ -463,36 +495,6 @@ public class ArcBeamController : MonoBehaviour
         return normal;
     }
 
-    // Aggiungi questo metodo per visualizzare correttamente i diagrammi lungo l'arco
-    void RenderArcDiagramCorrected(LineRenderer line, float[] values, float scale, Color color, float yOffset)
-    {
-        if (line == null || values == null || values.Length == 0) return;
-        
-        line.startColor = color;
-        line.endColor = color;
-        line.positionCount = values.Length;
-        
-        float zPos = arcObject.transform.position.z;
-        
-        for (int i = 0; i < values.Length; i++)
-        {
-            float t = (float)i / (values.Length - 1);
-            
-            // Trova il punto base sull'arco
-            Vector3 basePoint = InterpolateArcPoint(t);
-            
-            // Calcola la normale all'arco in quel punto
-            Vector3 normal = GetArcNormal(t);
-            
-            // CORREZIONE: I diagrammi vanno disegnati PERPENDICOLARMENTE all'arco
-            // e con il segno corretto (positivo = compressione per sforzo normale)
-            Vector3 diagramPoint = basePoint + normal * (values[i] * scale);
-            diagramPoint.z = zPos;
-            
-            line.SetPosition(i, diagramPoint);
-        }
-    }
-    
     // Metodi pubblici per UI
     public void SetAxialScale(float scale) => axialScale = scale;
     public void SetShearScale(float scale) => shearScale = scale;
