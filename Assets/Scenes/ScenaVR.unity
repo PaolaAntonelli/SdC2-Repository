@@ -13269,7 +13269,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &684483727
 RectTransform:
   m_ObjectHideFlags: 0
@@ -21915,20 +21915,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bde574a88a80b1f4eacfa1e71b7403c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  panels:
-  - name: B1
-    panel: {fileID: 1041738965}
-  - name: B2
-    panel: {fileID: 814074460}
-  - name: B3
-    panel: {fileID: 40007493}
-  - name: B4
-    panel: {fileID: 0}
-  - name: B5
-    panel: {fileID: 0}
-  - name: B6
-    panel: {fileID: 0}
-  startingPanel: A1
 --- !u!114 &1074445461
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22252,20 +22238,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bde574a88a80b1f4eacfa1e71b7403c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  panels:
-  - name: B1
-    panel: {fileID: 1146470009}
-  - name: B2
-    panel: {fileID: 286255492}
-  - name: B3
-    panel: {fileID: 767161273}
-  - name: B4
-    panel: {fileID: 0}
-  - name: B5
-    panel: {fileID: 0}
-  - name: B6
-    panel: {fileID: 0}
-  startingPanel: A1
 --- !u!114 &1089005261
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -28107,20 +28079,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bde574a88a80b1f4eacfa1e71b7403c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  panels:
-  - name: B1
-    panel: {fileID: 501099658}
-  - name: B2
-    panel: {fileID: 620272242}
-  - name: B3
-    panel: {fileID: 1417497962}
-  - name: B4
-    panel: {fileID: 0}
-  - name: B5
-    panel: {fileID: 0}
-  - name: B6
-    panel: {fileID: 0}
-  startingPanel: A1
 --- !u!114 &1330093256
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -31175,20 +31133,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bde574a88a80b1f4eacfa1e71b7403c5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  panels:
-  - name: A1
-    panel: {fileID: 809434870}
-  - name: A2
-    panel: {fileID: 509705044}
-  - name: A3
-    panel: {fileID: 320704112}
-  - name: A4
-    panel: {fileID: 1285741682}
-  - name: A5
-    panel: {fileID: 1320243417}
-  - name: A6
-    panel: {fileID: 1328036428}
-  startingPanel: A1
 --- !u!1 &1560838344
 GameObject:
   m_ObjectHideFlags: 0
@@ -31520,7 +31464,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6598815579406187037, guid: 18ddb545287c546e19cc77dc9fbb2189, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -36801,8 +36745,6 @@ MonoBehaviour:
   loadPrefab: {fileID: 7547502353565991602, guid: ce75b8bd0b2354a40b8e5e2b9cfdfedc, type: 3}
   shearLine: {fileID: 1032860489}
   momentLine: {fileID: 1448248750}
-  supportScale: {x: 0.005, y: 0.005, z: 0.005}
-  loadScale: {x: 0.02, y: 0.02, z: 0.02}
   forceMagnitude: 0.5
   currentDiagramScale: -1
   deflectionVisualScale: 100
@@ -43834,9 +43776,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f939969d9e9936d4ba54985420855dfe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  cameraTransform: {fileID: 0}
-  distance: 2
-  smoothSpeed: 5
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
