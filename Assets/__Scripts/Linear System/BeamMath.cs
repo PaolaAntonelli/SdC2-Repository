@@ -1,20 +1,20 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
-
+ 
 public enum SolverType { Analytic, FEM }
-
+ 
 public struct BeamData
 {
     public float[] momentPoints;
     public float[] shearPoints;
     public float[] deflectionPoints;
 }
-
+ 
 public static class BeamMath
 {
     private const float EI = 1000f;
-
+ 
     // --- METODO 1: ANALITICO (LINEE DI INFLUENZA / INTEGRAZIONE IV GRADO) ---
     public static BeamData CalculateAnalytic(float L, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
     {
@@ -22,7 +22,7 @@ public static class BeamMath
         nodes.AddRange(loadX);
         nodes.AddRange(suppX);
         nodes = nodes.Where(n => n >= 0 && n <= L).OrderBy(n => n).ToList();
-
+ 
         List<float> cleanNodes = new List<float>();
         if (nodes.Count > 0)
         {
@@ -33,23 +33,23 @@ public static class BeamMath
             }
         }
         if (Mathf.Abs(L - cleanNodes.Last()) > 0.005f && L > cleanNodes.Last()) cleanNodes.Add(L);
-
+ 
         int nSeg = cleanNodes.Count - 1;
         int dim = nSeg * 4;
-
+ 
         Debug.Log($"<color=cyan>[Analytic Solver]</color> Matrice: <b>{dim}x{dim}</b> ({nSeg} segmenti)");
-
+ 
         double[,] A = new double[dim, dim];
         double[] B = new double[dim];
         int row = 0;
-
+ 
         for (int i = 0; i < cleanNodes.Count; i++)
         {
             float x = cleanNodes[i];
             bool isSupport = suppX.Any(sx => Mathf.Abs(sx - x) < 0.02f);
             bool isLoad = loadX.Any(lx => Mathf.Abs(lx - x) < 0.02f);
             float pValue = isLoad ? loadP[loadX.FindIndex(lx => Mathf.Abs(lx - x) < 0.02f)] : 0;
-
+ 
             if (i == 0)
             {
                 if (isSupport) { Add_V(A, B, 0, 0, 0, ref row); Add_M(A, B, 0, 0, 0, ref row); }
@@ -71,10 +71,10 @@ public static class BeamMath
                 else Add_Cont_T(A, B, i - 1, i, L_left, pValue, ref row);
             }
         }
-
+ 
         double[] coeffs = Solve(A, B);
         BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution] };
-
+ 
         for (int j = 0; j < resolution; j++)
         {
             float x = (L / (resolution - 1)) * j;
@@ -88,7 +88,7 @@ public static class BeamMath
         }
         return data;
     }
-
+ 
     // --- METODO 2: FEM (FINITE ELEMENT METHOD) ---
     public static BeamData CalculateFEM(float L, List<float> loadX, List<float> loadP, List<float> suppX, int resolution)
     {
@@ -96,12 +96,12 @@ public static class BeamMath
         int nElems = nNodes - 1;
         float Le = L / nElems;
         int ndof = nNodes * 2;
-
+ 
         Debug.Log($"<color=yellow>[FEM Solver]</color> Matrice: <b>{ndof}x{ndof}</b> ({nNodes} nodi)");
-
+ 
         double[,] K = new double[ndof, ndof];
         double[] F = new double[ndof];
-
+ 
         // Assemblaggio matrice globale
         for (int e = 0; e < nElems; e++)
         {
@@ -110,23 +110,23 @@ public static class BeamMath
             for (int i = 0; i < 4; i++)
                 for (int j = 0; j < 4; j++) K[idx[i], idx[j]] += ke[i, j];
         }
-
+ 
         // Carichi
         for (int i = 0; i < loadX.Count; i++)
         {
             int nodeIdx = Mathf.Clamp(Mathf.RoundToInt((loadX[i] / L) * nElems), 0, nNodes - 1);
             F[nodeIdx * 2] -= loadP[i];
         }
-
+ 
         // Vincoli (Penalizzazione)
         foreach (float sx in suppX)
         {
             int nodeIdx = Mathf.Clamp(Mathf.RoundToInt((sx / L) * nElems), 0, nNodes - 1);
             K[nodeIdx * 2, nodeIdx * 2] += 1e12;
         }
-
+ 
         double[] u = Solve(K, F);
-
+ 
         BeamData data = new BeamData { momentPoints = new float[resolution], shearPoints = new float[resolution], deflectionPoints = new float[resolution] };
         for (int i = 0; i < nNodes; i++)
         {
@@ -143,10 +143,10 @@ public static class BeamMath
         // Chiudiamo l'ultimo punto del diagramma
         data.momentPoints[nNodes - 1] = data.momentPoints[nNodes - 2];
         data.shearPoints[nNodes - 1] = data.shearPoints[nNodes - 2];
-
+ 
         return data;
     }
-
+ 
     // --- HELPERS COMUNI ---
     static void Add_V(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z * z * z / 6.0; A[r, s * 4 + 1] = z * z / 2.0; A[r, s * 4 + 2] = z; A[r, s * 4 + 3] = 1; B[r] = val; r++; }
     static void Add_M(double[,] A, double[] B, int s, float z, double val, ref int r) { A[r, s * 4 + 0] = z; A[r, s * 4 + 1] = 1; B[r] = val; r++; }
@@ -155,7 +155,7 @@ public static class BeamMath
     static void Add_Cont_Phi(double[,] A, double[] B, int s1, int s2, float L1, ref int r) { A[r, s1 * 4 + 0] = L1 * L1 / 2.0; A[r, s1 * 4 + 1] = L1; A[r, s1 * 4 + 2] = 1; A[r, s2 * 4 + 2] = -1; r++; }
     static void Add_Cont_M(double[,] A, double[] B, int s1, int s2, float L1, ref int r) { A[r, s1 * 4 + 0] = L1; A[r, s1 * 4 + 1] = 1; A[r, s2 * 4 + 1] = -1; r++; }
     static void Add_Cont_T(double[,] A, double[] B, int s1, int s2, float L1, float P, ref int r) { A[r, s1 * 4 + 0] = 1; A[r, s2 * 4 + 0] = -1; B[r] = -P; r++; }
-
+ 
     private static double[,] GetLocalFEMStiffness(float l, float EI)
     {
         double l2 = l * l; double l3 = l2 * l;
@@ -166,7 +166,7 @@ public static class BeamMath
             { 6*EI/l2,  2*EI/l,  -6*EI/l2,  4*EI/l  }
         };
     }
-
+ 
     private static double[] Solve(double[,] A, double[] b)
     {
         int n = b.Length;
@@ -194,3 +194,4 @@ public static class BeamMath
         return x;
     }
 }
+ 
