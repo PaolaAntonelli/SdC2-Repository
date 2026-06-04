@@ -5,9 +5,12 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/ScenaVR.unity
     guid: b8c09d3ff6d2bf44e8b7676fb50009d0
+  - enabled: 1
+    path: Assets/Scenes/ScenaAR.unity
+    guid: f9b24cf9d4e94784fb82831af8695386
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: c348712bda248c246b8c49b3db54643f, type: 3}
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 3f31e0f8cac66394a88b4fdaa0d261ed, type: 2}
